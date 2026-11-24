@@ -29,6 +29,7 @@ var area_button: Button
 var reputation: float = 60.0
 var promo_left: float = 0.0
 var promo_button: Button
+var autosave_clock: float = 0.0
 var delivery_duration: float = 6.0
 var build_kind: int = -1
 var visual: Control
@@ -399,6 +400,10 @@ func move_actor(actor: Dictionary, target: Vector3, delta: float, speed: float =
 func _process(delta):
 	if world == null or (menu!=null and menu.visible):
 		return
+	autosave_clock+=delta
+	if autosave_clock>=15:
+		autosave_clock=0
+		save_game()
 	if delivery_eta>0:
 		delivery_eta=maxf(0,delivery_eta-delta)
 		if delivery_eta<=0:
@@ -492,7 +497,7 @@ func service(s: Dictionary, i: int, delta: float):
 					s["phase"]=3
 					s["target"]=shelf_pos(item)
 		3:
-			if move_actor(s,s["target"],delta):
+			if move_staff(s,s["target"],delta):
 				if stock[item]<=0:
 					lost_sales+=1
 					reputation=maxf(0,reputation-1.5)
@@ -505,7 +510,7 @@ func service(s: Dictionary, i: int, delta: float):
 					s["phase"]=4
 					refresh()
 		4:
-			if move_actor(s,home,delta):
+			if move_staff(s,home,delta):
 				s["carry"]=false
 				c["carry"]=true
 				s["phase"]=5
@@ -587,7 +592,7 @@ func update_loader_task(task: Dictionary, delta: float):
 				task["target"]=shelf_pos(item)+Vector3(0.35,0,0.25)
 				task["phase"]=4 if amount>0 else 0
 		4:
-			if move_actor(task,task["target"],delta,2.4):
+			if move_staff(task,task["target"],delta,2.4):
 				var n=mini(task["amount"],capacity(item)-stock[item])
 				stock[item]+=n
 				storage[item]+=task["amount"]-n
@@ -648,6 +653,7 @@ func load_game():
 	warehouse_level=clampi(int(data.get("warehouse_level",1)),1,3)
 	placements=data.get("placements",[-1,-1,-1,-1,-1,-1])
 	incoming=data.get("incoming",[0,0,0])
+	normalize_catalog()
 	delivery_eta=maxf(0,float(data.get("delivery_eta",0)))
 	prices=data.get("prices",[22,32,19])
 	expenses=maxi(0,int(data.get("expenses",0)))
@@ -667,7 +673,7 @@ func load_game():
 		prices[i]=clampi(int(array_value(prices,i,PRICE[i])),COST[i],PRICE[i]*2)
 	inventory_cost=data.get("inventory_cost",[])
 	if inventory_cost.is_empty():
-		for i in range(3):
+		for i in range(GOODS.size()):
 			inventory_cost.append((stock[i]+storage[i]+delivery[i]+incoming[i])*COST[i])
 	if int(data.get("version",1))<3:
 		var slot=0
@@ -737,6 +743,7 @@ func show_menu():
 	subtitle.horizontal_alignment=HORIZONTAL_ALIGNMENT_CENTER
 	button(column,"Продолжить игру",func(): menu.hide())
 	button(column,"Как играть",show_help)
+	button(column,"Графика: сменить качество",func(): visual.toggle_quality())
 	var toggle=button(column,"Звук: "+("выкл." if muted else "вкл."),toggle_sound)
 	toggle.name="SoundToggle"
 	button(column,"Новая игра",confirm_reset)
@@ -832,3 +839,24 @@ func start_promo():
 	message="Реклама запущена. Покупателей станет больше."
 	refresh()
 	save_game()
+
+# Use the cross aisle and side aisles instead of crossing the display racks.
+func move_staff(actor: Dictionary, target: Vector3, delta: float, speed: float=2.6) -> bool:
+	var p: Vector3=actor["pos"]
+	if not actor.has("route_target") or actor["route_target"]!=target or (actor["route"].is_empty() and p.distance_to(target)>0.04):
+		var route: Array=[]
+		if p.x>4.5 or target.x>4.5:
+			# Cross the expansion via the corridor beside the original shop.
+			var from_side=4.55
+			if p.x>4.5:
+				route.append(Vector3(from_side,0,p.z))
+			route.append(Vector3(from_side,0,target.z))
+		route.append(target)
+		actor["route"]=route
+		actor["route_target"]=target
+	var path: Array=actor["route"]
+	if path.is_empty():
+		return true
+	if move_actor(actor,path[0],delta,speed):
+		path.pop_front()
+	return path.is_empty()

@@ -20,6 +20,10 @@ var focus := Vector3(0,0.5,0)
 var focus_goal := Vector3(0,0.5,0)
 var zoom_goal: float = 10.8
 var floor_material: StandardMaterial3D
+var materials: Dictionary = {}
+var mesh_cache: Dictionary = {}
+var scene_light: DirectionalLight3D
+var quality_high: bool = true
 var crates: Array = []
 var dirt_marks: Array = []
 var delivery_boxes: Array = []
@@ -52,15 +56,16 @@ func _ready():
 	var env = WorldEnvironment.new()
 	var e = Environment.new()
 	e.background_mode = Environment.BG_COLOR
-	e.background_color = Color("#607f83")
+	e.background_color = Color("#40565c")
 	e.ambient_light_source = Environment.AMBIENT_SOURCE_COLOR
 	e.ambient_light_color = Color("#c4d5d4")
-	e.ambient_light_energy = 0.28
+	e.ambient_light_energy = 0.35
 	env.environment = e
 	stage.add_child(env)
 	var light = DirectionalLight3D.new()
 	light.rotation_degrees = Vector3(-57,-38,0)
-	light.light_energy = 0.52
+	light.light_energy = 0.65
+	scene_light=light
 	light.shadow_enabled = true
 	light.directional_shadow_max_distance=45.0
 	stage.add_child(light)
@@ -74,6 +79,7 @@ func _ready():
 	build_store()
 	build_extension()
 	decorate_store()
+	add_details()
 	reset_view()
 	status_label = Label.new()
 	status_label.position = Vector2(12,8)
@@ -151,9 +157,12 @@ func select_pad(pos: Vector2):
 			return
 
 func mat(color: Color) -> StandardMaterial3D:
+	if materials.has(color):
+		return materials[color]
 	var m = StandardMaterial3D.new()
 	m.albedo_color = color
 	m.roughness = 0.82
+	materials[color]=m
 	return m
 
 func mesh(parent: Node3D, shape: Mesh, pos: Vector3, color: Color) -> MeshInstance3D:
@@ -165,27 +174,35 @@ func mesh(parent: Node3D, shape: Mesh, pos: Vector3, color: Color) -> MeshInstan
 	return n
 
 func box(parent: Node3D, pos: Vector3, dims: Vector3, color: Color) -> MeshInstance3D:
-	var b = BoxMesh.new()
-	b.size = dims
-	return mesh(parent,b,pos,color)
+	var key="box:"+str(dims)
+	if not mesh_cache.has(key):
+		var b=BoxMesh.new()
+		b.size=dims
+		mesh_cache[key]=b
+	return mesh(parent,mesh_cache[key],pos,color)
 
 func ball(parent: Node3D, pos: Vector3, dims: Vector3, color: Color) -> MeshInstance3D:
-	var b = SphereMesh.new()
-	b.radius = 0.5
-	b.height = 1.0
-	b.radial_segments = 16
-	b.rings = 8
-	var n = mesh(parent,b,pos,color)
+	if not mesh_cache.has("sphere"):
+		var b=SphereMesh.new()
+		b.radius=0.5
+		b.height=1.0
+		b.radial_segments=20
+		b.rings=10
+		mesh_cache["sphere"]=b
+	var n=mesh(parent,mesh_cache["sphere"],pos,color)
 	n.scale = dims
 	return n
 
 func cylinder(parent: Node3D, pos: Vector3, radius: float, height: float, color: Color) -> MeshInstance3D:
-	var b = CylinderMesh.new()
-	b.top_radius = radius
-	b.bottom_radius = radius
-	b.height = height
-	b.radial_segments = 16
-	return mesh(parent,b,pos,color)
+	var key="cylinder:"+str(radius)+":"+str(height)
+	if not mesh_cache.has(key):
+		var b=CylinderMesh.new()
+		b.top_radius=radius
+		b.bottom_radius=radius
+		b.height=height
+		b.radial_segments=16
+		mesh_cache[key]=b
+	return mesh(parent,mesh_cache[key],pos,color)
 
 func sign_text(parent: Node3D, pos: Vector3, value: String, color: Color, pixel: float = 0.006):
 	var n = Label3D.new()
@@ -438,6 +455,8 @@ func person(color: Color) -> Node3D:
 	p.set_meta("left",left)
 	p.set_meta("right",right)
 	ball(p,Vector3(0,0.72,0),Vector3(0.47,0.57,0.32),color)
+	box(p,Vector3(0,0.51,0),Vector3(0.35,0.065,0.28),Color("#263d43"))
+	box(p,Vector3(-0.10,0.82,0.16),Vector3(0.10,0.075,0.015),Color("#eee4d3"))
 	for direction in [-1,1]:
 		var arm = cylinder(p,Vector3(direction*0.27,0.70,0),0.07,0.38,color)
 		arm.rotation.z = direction*0.22
@@ -445,6 +464,9 @@ func person(color: Color) -> Node3D:
 	cylinder(p,Vector3(0,1.00,0),0.085,0.13,skin)
 	ball(p,Vector3(0,1.19,0),Vector3(0.36,0.40,0.35),skin)
 	ball(p,Vector3(0,1.30,-0.055),Vector3(0.38,0.26,0.34),Color("#574137"))
+	ball(p,Vector3(0,1.14,0.17),Vector3(0.055,0.07,0.055),skin.darkened(0.08))
+	for side in [-1,1]:
+		ball(p,Vector3(side*0.18,1.18,0),Vector3(0.07,0.11,0.08),skin)
 	for direction in [-1,1]:
 		ball(p,Vector3(direction*0.07,1.21,0.16),Vector3(0.035,0.045,0.025),Color("#3f3530"))
 	return p
@@ -564,3 +586,42 @@ func _process(delta):
 	sales_label.position=Vector2(12,size.y-28)
 	sales_label.text="Выручка: %d мон. | Клиентов: %d" % [game.revenue,game.customers.size()]
 
+
+func add_details():
+	var dark=Color("#314a4b")
+	var wood=Color("#a17b50")
+	var cream=Color("#e5d3b0")
+	# Platform skirt, front entrance and shop identity.
+	box(stage,Vector3(0,-0.14,4.13),Vector3(10.3,0.27,0.12),dark)
+	for x in [-4.7,-2.1]:
+		box(stage,Vector3(x,0.95,3.8),Vector3(0.16,1.9,0.20),dark)
+	box(stage,Vector3(-3.4,1.96,3.8),Vector3(2.75,0.18,0.24),dark)
+	for i in range(9):
+		box(stage,Vector3(-4.6+i*0.3,2.14,3.85),Vector3(0.29,0.09,0.54),cream if i%2==0 else Color("#4d8a76"))
+	# Price strips, shelf labels, support legs and floor skirting.
+	for i in range(3):
+		var x=-3.25+i*3.1
+		for y in [0.22,0.83,1.44]:
+			for j in range(4):
+				box(stage,Vector3(x-0.87+j*0.58,y, -1.59),Vector3(0.22,0.08,0.025),cream)
+		for dx in [-1.0,1.0]:
+			box(stage,Vector3(x+dx,0.07,-2.1),Vector3(0.12,0.14,0.64),dark)
+	box(stage,Vector3(0,0.11,-3.79),Vector3(10.1,0.20,0.12),wood)
+	# Customer baskets and nested handles near the entrance.
+	for i in range(3):
+		var y=0.12+i*0.13
+		box(stage,Vector3(-2.5,y,3.65),Vector3(0.46,0.13,0.35),Color("#b67948"))
+		for x in [-0.18,0.18]:
+			box(stage,Vector3(-2.5+x,y+0.09,3.65),Vector3(0.035,0.17,0.035),dark)
+		box(stage,Vector3(-2.5,y+0.17,3.65),Vector3(0.38,0.035,0.035),dark)
+	# Loading bay road markings and cardboard packing tape.
+	for z in [-2.8,-1.6,-0.4,0.8,2.0,3.2]:
+		box(stage,Vector3(-5.4,0.025,z),Vector3(0.07,0.025,0.65),cream)
+	for crate in crates:
+		box(crate,Vector3(0,0.205,0),Vector3(0.08,0.012,0.43),Color("#ddc18c"))
+
+func toggle_quality():
+	quality_high=not quality_high
+	viewport.msaa_3d=Viewport.MSAA_2X if quality_high else Viewport.MSAA_DISABLED
+	scene_light.shadow_enabled=quality_high
+	stretch_shrink=1 if quality_high else 2
