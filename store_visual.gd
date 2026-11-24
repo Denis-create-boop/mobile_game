@@ -18,12 +18,22 @@ var crates: Array = []
 var dirt_marks: Array = []
 var delivery_boxes: Array = []
 var tick: float = 0.0
+var build_pads: Array = []
+var built_racks: Array = []
+var built_items: Array = []
+var truck: Node3D
+var warehouse_extra: Array = []
+var orbit: float = 0.65
+var camera_zoom: float = 16.5
+var popups: Array = []
+var last_placements: Array = []
+var mouse_down := Vector2.ZERO
 var status_label: Label
 var sales_label: Label
 
 func _ready():
 	stretch = true
-	mouse_filter = Control.MOUSE_FILTER_IGNORE
+	mouse_filter = Control.MOUSE_FILTER_STOP
 	viewport = SubViewport.new()
 	viewport.size = Vector2i(640,420)
 	viewport.own_world_3d = true
@@ -48,22 +58,76 @@ func _ready():
 	stage.add_child(light)
 	camera = Camera3D.new()
 	camera.projection = Camera3D.PROJECTION_ORTHOGONAL
-	camera.size = 11.8
+	camera.size = 16.5
 	camera.position = Vector3(10,12,14)
 	stage.add_child(camera)
-	camera.look_at(Vector3(0,0.3,0))
+	camera.look_at_from_position(Vector3(16,15,18),Vector3(3,0.3,0))
 	camera.current = true
 	build_store()
+	build_extension()
+	reset_view()
 	status_label = Label.new()
 	status_label.position = Vector2(12,8)
+	status_label.mouse_filter=Control.MOUSE_FILTER_IGNORE
 	status_label.add_theme_font_size_override("font_size",18)
 	status_label.add_theme_color_override("font_color",Color("#193d36"))
 	add_child(status_label)
 	sales_label = Label.new()
+	sales_label.mouse_filter=Control.MOUSE_FILTER_IGNORE
 	sales_label.set_anchors_and_offsets_preset(Control.PRESET_BOTTOM_LEFT)
 	sales_label.position = Vector2(12, size.y-30)
 	sales_label.add_theme_color_override("font_color",Color("#193d36"))
 	add_child(sales_label)
+
+func reset_view():
+	orbit=0.65
+	camera_zoom=16.5
+	update_camera()
+
+func zoom(factor: float):
+	camera_zoom=clampf(camera_zoom*factor,7,23)
+	update_camera()
+
+func rotate_view(direction: int):
+	orbit=clampf(orbit+direction*0.35,-0.45,1.45)
+	update_camera()
+
+func update_camera():
+	camera.size=camera_zoom
+	var target=Vector3(3.0,0.5,0)
+	camera.look_at_from_position(target+Vector3(sin(orbit)*17,14,cos(orbit)*17),target)
+
+func _gui_input(event):
+	if event is InputEventMouseButton:
+		if event.pressed and event.button_index==MOUSE_BUTTON_WHEEL_UP:
+			zoom(0.9)
+		elif event.pressed and event.button_index==MOUSE_BUTTON_WHEEL_DOWN:
+			zoom(1.1)
+		elif event.button_index==MOUSE_BUTTON_LEFT:
+			if event.pressed:
+				mouse_down=event.position
+			elif mouse_down.distance_to(event.position)<12:
+				select_pad(event.position)
+	elif event is InputEventScreenTouch:
+		if event.pressed:
+			mouse_down=event.position
+		elif mouse_down.distance_to(event.position)<12:
+			select_pad(event.position)
+
+func select_pad(pos: Vector2):
+	if game.build_kind<0 or camera==null:
+		return
+	var pixel=pos*Vector2(viewport.size)/size
+	var origin=camera.project_ray_origin(pixel)
+	var direction=camera.project_ray_normal(pixel)
+	if absf(direction.y)<0.001:
+		return
+	var point=origin+direction*(-origin.y/direction.y)
+	for i in range(6):
+		var pad: Vector3=game.build_slot(i)
+		if absf(point.x-pad.x)<1.18 and absf(point.z-pad.z)<0.85:
+			game.place_equipment(i)
+			return
 
 func mat(color: Color) -> StandardMaterial3D:
 	var m = StandardMaterial3D.new()
@@ -224,6 +288,77 @@ func build_store():
 	broom.rotation.z=-0.3
 	box(cleaner,Vector3(0.48,0.08,0.16),Vector3(0.25,0.12,0.2),Color("#c59e65"))
 
+func build_extension():
+	var cream=Color("#eee3d2")
+	var mint=Color("#398675")
+	var wood=Color("#b88c62")
+	# Additional retail wing with accessible construction pads.
+	box(stage,Vector3(8.6,-0.29,0),Vector3(8.2,0.48,8.4),Color("#688e82"))
+	for x in range(8):
+		for z in range(8):
+			var color=Color("#e9e5d9") if (x+z)%2==0 else Color("#ceded2")
+			box(stage,Vector3(5.1+x,-0.04,z-3.5),Vector3(0.98,0.08,0.98),color)
+	box(stage,Vector3(8.6,0.85,-4),Vector3(8.3,1.7,0.18),cream)
+	box(stage,Vector3(8.6,1.77,-4),Vector3(8.3,0.12,0.26),mint)
+	for i in range(6):
+		var center: Vector3=game.build_slot(i)
+		var pad=box(stage,center+Vector3(0,0.015,0),Vector3(2.4,0.035,1.65),Color("#91bdab"))
+		build_pads.append(pad)
+		built_racks.append(null)
+		built_items.append([])
+	# External loading bay, vehicle and warehouse extension.
+	box(stage,Vector3(-6.65,-0.25,0),Vector3(3.0,0.4,8.4),Color("#a6adac"))
+	box(stage,Vector3(-6.65,0.02,-0.4),Vector3(2.6,0.08,5.8),Color("#bdc4be"))
+	for i in range(2):
+		var unit=Node3D.new()
+		stage.add_child(unit)
+		unit.position=Vector3(-6.3,0,1.8+i*1.15)
+		box(unit,Vector3(0,0.1,0),Vector3(1.8,0.18,1.05),wood)
+		for j in range(4):
+			box(unit,Vector3(-0.42+(j%2)*0.82,0.45+floori(j/2.0)*0.54,0),Vector3(0.76,0.5,0.8),wood.lightened(j*0.035))
+		warehouse_extra.append(unit)
+	truck=Node3D.new()
+	stage.add_child(truck)
+	box(truck,Vector3(0,0.56,0),Vector3(1.45,0.3,3.2),Color("#46535a"))
+	box(truck,Vector3(0,1.22,-0.35),Vector3(1.5,1.25,2.05),cream)
+	box(truck,Vector3(0,0.98,1.02),Vector3(1.48,1.08,0.95),mint)
+	box(truck,Vector3(0,1.23,1.51),Vector3(1.25,0.37,0.04),Color("#90c8dd"))
+	for x in [-0.74,0.74]:
+		for z in [-0.95,1.05]:
+			var wheel=cylinder(truck,Vector3(x,0.35,z),0.32,0.18,Color("#253238"))
+			wheel.rotation.z=PI/2
+	sign_text(truck,Vector3(0,1.32,-1.39),"MARKET",mint,0.004)
+	truck.visible=false
+
+func install_rack(slot: int, kind: int):
+	var rack=Node3D.new()
+	stage.add_child(rack)
+	rack.position=game.build_slot(slot)
+	var color=Color("#63a9c4") if kind==1 else Color("#398675")
+	var cream=Color("#f1e8d4")
+	var height=1.8 if kind!=2 else 1.15
+	box(rack,Vector3(0,height/2,-0.36),Vector3(2.25,height,0.12),color)
+	for x in [-1.09,1.09]:
+		box(rack,Vector3(x,height/2,0),Vector3(0.1,height,0.9),color)
+	var items: Array=[]
+	for y in [0.22,0.75,1.28]:
+		var yy: float=y if kind!=2 else y*0.62
+		box(rack,Vector3(0,yy,0),Vector3(2.25,0.09,0.9),cream)
+		for j in range(4):
+			var p=Vector3(-0.79+j*0.52,yy+0.18,0.04)
+			var item: MeshInstance3D
+			if kind==1:
+				item=box(rack,p,Vector3(0.29,0.32,0.27),Color("#a5d4ea"))
+			elif kind==0:
+				item=ball(rack,p,Vector3(0.4,0.26,0.46),Color("#d39b54"))
+			else:
+				item=ball(rack,p,Vector3(0.31,0.3,0.31),Color("#d85b50"))
+			items.append(item)
+	box(rack,Vector3(0,height+0.04,0),Vector3(2.25,0.16,0.92),color)
+	sign_text(rack,Vector3(0,height+0.04,0.47),game.GOODS[kind],Color.WHITE,0.004)
+	built_racks[slot]=rack
+	built_items[slot]=items
+
 func person(color: Color) -> Node3D:
 	var p = Node3D.new()
 	stage.add_child(p)
@@ -273,11 +408,44 @@ func _process(delta):
 	if not is_instance_valid(game) or status_label==null:
 		return
 	tick+=delta
+	var displayed=[12,12,12]
+	for i in range(6):
+		var kind: int=game.placements[i]
+		build_pads[i].visible=game.build_kind>=0 and kind<0
+		if kind>=0:
+			if built_racks[i]==null:
+				install_rack(i,kind)
+			for j in range(built_items[i].size()):
+				built_items[i][j].visible=displayed[kind]+j<game.stock[kind]
+			displayed[kind]+=12
+	for i in range(warehouse_extra.size()):
+		warehouse_extra[i].visible=game.warehouse_level>i+1
+	var at_dock: bool=game.delivery[0]+game.delivery[1]+game.delivery[2]>0 or game.loader_phase==2
+	truck.visible=game.delivery_eta>0 or at_dock
+	truck.position=Vector3(-6.6,0,lerpf(-1.6,7.0,clampf(game.delivery_eta/6.0,0,1))) if game.delivery_eta>0 and not at_dock else Vector3(-6.6,0,-1.6)
+	for event in game.payment_events:
+		var tag=Label3D.new()
+		tag.text="+"+str(event["amount"])
+		tag.billboard=BaseMaterial3D.BILLBOARD_ENABLED
+		tag.font_size=64
+		tag.pixel_size=0.009
+		tag.modulate=Color("#f7d26a")
+		tag.outline_size=8
+		stage.add_child(tag)
+		tag.position=event["pos"]+Vector3(0,2,0)
+		popups.append({"node":tag,"life":1.6})
+	game.payment_events.clear()
+	for popup in popups:
+		popup["life"]-=delta
+		popup["node"].position.y+=delta*0.8
+		if popup["life"]<=0:
+			popup["node"].queue_free()
+	popups=popups.filter(func(p): return p["life"]>0)
 	for i in range(3):
 		for j in range(products[i].size()):
 			products[i][j].visible=j<game.stock[i]
 		for k in range(2):
-			extras[i][k].visible=game.shelf_levels[i]>k+1
+			extras[i][k].visible=false
 		for j in range(extra_goods[i].size()):
 			extra_goods[i][j].visible=j+12<game.stock[i]
 		employees[i].visible=i<game.workers
