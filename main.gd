@@ -1,9 +1,9 @@
 extends Control
 
 const SAVE_PATH = "user://market.json"
-const GOODS = ["Хлеб", "Молоко", "Яблоки"]
-const COST = [12, 18, 10]
-const PRICE = [22, 32, 19]
+const GOODS = ["Хлеб", "Молоко", "Яблоки", "Сыр", "Сок", "Кофе", "Шоколад", "Овощи", "Йогурт", "Чай", "Макароны", "Мороженое"]
+const COST = [12,18,10,24,15,32,18,12,16,22,14,25]
+const PRICE = [22,32,19,43,28,59,34,23,29,40,26,46]
 const COLORS = [Color("#d6a660"), Color("#91c9ed"), Color("#e17c68")]
 var menu: PanelContainer
 var sound: AudioStreamPlayer
@@ -23,7 +23,13 @@ var cleaners: int = 0
 var storage: Array = [5,5,5]
 var delivery: Array = [0,0,0]
 var shelf_levels: Array = [1,1,1]
-var placements: Array = [-1,-1,-1,-1,-1,-1]
+var placements: Array = [-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1]
+var area_level: int = 1
+var area_button: Button
+var reputation: float = 60.0
+var promo_left: float = 0.0
+var promo_button: Button
+var delivery_duration: float = 6.0
 var build_kind: int = -1
 var visual: Control
 var tabs: TabContainer
@@ -69,7 +75,9 @@ var rng = RandomNumberGenerator.new()
 
 func _ready():
 	rng.randomize()
+	normalize_catalog()
 	load_game()
+	normalize_catalog()
 	for i in range(workers):
 		add_seller()
 	for i in range(loaders):
@@ -160,10 +168,11 @@ func build_ui():
 	side = tab_page("Стройка")
 	label(side, "РАЗМЕЩЕНИЕ ОБОРУДОВАНИЯ", 14)
 	label(side, "Выберите товар, затем место в зале.", 12)
-	for i in range(3):
+	for i in range(GOODS.size()):
 		shelf_buttons.append(button(side, "", expand_shelf.bind(i)))
 	button(side, "Отменить строительство", cancel_build)
 	button(side, "Расширить склад · 180 мон.", expand_warehouse)
+	area_button=button(side,"",expand_area)
 	side = tab_page("Штат")
 	label(side, "ПЕРСОНАЛ", 15)
 	for i in range(3):
@@ -172,8 +181,9 @@ func build_ui():
 	side = tab_page("Отчёт")
 	label(side, "ЭКОНОМИКА", 16)
 	finance_label=label(side, "", 13)
+	promo_button=button(side,"",start_promo)
 	label(side, "ЦЕНЫ ПРОДАЖИ", 15)
-	for i in range(3):
+	for i in range(GOODS.size()):
 		var price_row=HBoxContainer.new()
 		side.add_child(price_row)
 		button(price_row,"−",change_price.bind(i,-1))
@@ -210,7 +220,7 @@ func tab_page(title: String) -> VBoxContainer:
 	return content
 
 func build_slot(i: int) -> Vector3:
-	return Vector3(5.9+(i%3)*2.7,0,-2.1+floori(i/3.0)*3.0)
+	return Vector3(5.9+(i%3)*2.7,0,-2.1+floori(i/3.0)*2.25)
 
 func cancel_build():
 	build_kind=-1
@@ -218,11 +228,11 @@ func cancel_build():
 	refresh()
 
 func place_equipment(slot: int):
-	if build_kind<0 or slot<0 or slot>=placements.size() or placements[slot]!=-1:
+	if build_kind<0 or slot<0 or slot>=active_slots() or placements[slot]!=-1:
 		return
 	var i=build_kind
-	var cost=150*shelf_levels[i]
-	if shelf_levels[i]>=3 or cash<cost:
+	var cost=equipment_cost(i)
+	if shelf_levels[i]>=3 or cash<cost or not unlocked(i):
 		cancel_build()
 		return
 	cash-=cost
@@ -255,25 +265,33 @@ func change_price(i: int, direction: int):
 func refresh_finance():
 	if finance_label==null:
 		return
-	finance_label.text="День %d · %d%% смены\nВыручка: %d\nСебестоимость продаж: %d\nОперационные расходы: %d\nПрибыль от продаж: %d\nУшли без покупки: %d" % [day_number,roundi(day_clock/1.2),revenue,cost_of_sales,expenses,revenue-cost_of_sales-expenses,lost_sales]
-	for i in range(3):
+	finance_label.text="Репутация: %d%%\nАссортимент: %d/%d\nДень %d · %d%% смены\nВыручка: %d\nСебестоимость продаж: %d\nОперационные расходы: %d\nПрибыль от продаж: %d\nУшли без покупки: %d" % [roundi(reputation),active_products().size(),GOODS.size(),day_number,roundi(day_clock/1.2),revenue,cost_of_sales,expenses,revenue-cost_of_sales-expenses,lost_sales]
+	for i in range(GOODS.size()):
 		price_labels[i].text="%s · %d мон." % [GOODS[i],prices[i]]
 	goals_label.text="Достижения: %d/5\n" % rewards.size()+"ЦЕЛИ\n%s  Продать 50 товаров (%d/50)\n%s  Нанять грузчика\n%s  Построить 3 новых полки" % ["✓" if sold>=50 else "○",mini(sold,50),"✓" if loaders>0 else "○","✓" if level>=4 else "○"]
 
 func refresh():
 	hud.text = "Баланс %d мон.   Ур. %d   Продано %d" % [cash, level, sold]
-	for i in range(3):
+	for i in range(GOODS.size()):
 		shop_rows[i].text = "%s %d/%d | склад %d | +5 за %d" % [GOODS[i],stock[i],capacity(i),storage[i],supplier_cost(i)*5]
-		shop_rows[i].disabled = cash < supplier_cost(i)*5 or storage[i]+delivery[i]+incoming[i]+5 > 40*warehouse_level
-		shelf_buttons[i].text = "%s: прилавок %d · %d мон." % [GOODS[i],shelf_levels[i],150*shelf_levels[i]]
-		shelf_buttons[i].disabled = shelf_levels[i]>=3 or cash<150*shelf_levels[i]
+		shop_rows[i].disabled = shelf_levels[i]==0 or cash < supplier_cost(i)*5 or storage[i]+delivery[i]+incoming[i]+5 > 40*warehouse_level
+		shelf_buttons[i].text = "%s: %d полок · %d мон." % [GOODS[i],shelf_levels[i],equipment_cost(i)]
+		if not unlocked(i):
+			shelf_buttons[i].text=GOODS[i]+" · откроется на ур. "+str(unlock_level(i))
+		if shelf_levels[i]==0:
+			shop_rows[i].text=GOODS[i]+" · нужен прилавок"
+		shelf_buttons[i].disabled = shelf_levels[i]>=3 or cash<equipment_cost(i) or not unlocked(i)
 	var counts = [workers,loaders,cleaners]
 	var names = ["Продавец","Грузчик","Уборщик"]
 	for i in range(3):
 		staff_buttons[i].text = "%s %d/3 · нанять %d" % [names[i],counts[i],role_cost(i)]
 		staff_buttons[i].disabled = counts[i]>=3 or cash<role_cost(i)
+	area_button.text="Расширить зал (%d/2) · 450 мон." % area_level
+	area_button.disabled=area_level>=2 or cash<450
+	promo_button.text="Реклама: %d сек." % ceili(promo_left) if promo_left>0 else "Реклама · 60 мон. / 45 сек."
+	promo_button.disabled=promo_left>0 or cash<60
 	open_button.text = "Закрыть магазин" if running else "Открыть магазин"
-	info.text = "В пути: %d сек. | На разгрузке: %d\nЧистота: %d%% | Склад: %d/товар" % [ceili(delivery_eta),delivery[0]+delivery[1]+delivery[2],roundi(100-dirt),40*warehouse_level]
+	info.text = "В пути: %d сек. | На разгрузке: %d\nЧистота: %d%% | Склад: %d/товар" % [ceili(delivery_eta),sum_items(delivery),roundi(100-dirt),40*warehouse_level]
 	hint.text = message
 	supplier_button.text=["Местный · 6 сек.","Оптовик · 12 сек. / скидка","Экспресс · 3 сек. / доплата"][supplier]
 	refresh_finance()
@@ -285,19 +303,20 @@ func role_cost(i: int) -> int:
 	return [220*workers,140*(loaders+1),100*(cleaners+1)][i]
 
 func buy(i: int):
-	if cash<supplier_cost(i)*5 or storage[i]+delivery[i]+incoming[i]+5>40*warehouse_level:
+	if shelf_levels[i]==0 or cash<supplier_cost(i)*5 or storage[i]+delivery[i]+incoming[i]+5>40*warehouse_level:
 		return
 	cash -= supplier_cost(i)*5
 	inventory_cost[i] += supplier_cost(i)*5
 	incoming[i] += 5
 	if delivery_eta<=0:
 		delivery_eta=[6.0,12.0,3.0][supplier]
+		delivery_duration=delivery_eta
 	message = "Заказ поставщику: " + GOODS[i]
 	refresh()
 	save_game()
 
 func expand_shelf(i: int):
-	if shelf_levels[i]>=3 or cash<150*shelf_levels[i]:
+	if shelf_levels[i]>=3 or cash<equipment_cost(i):
 		return
 	build_kind=i
 	message="Выберите свободную площадку справа от магазина."
@@ -329,11 +348,11 @@ func manual_load():
 			message="Грузчики работают. Дождитесь окончания разгрузки."
 			refresh()
 			return
-	for i in range(3):
+	for i in range(GOODS.size()):
 		if delivery[i]>0:
 			storage[i] += delivery[i]
 			delivery[i] = 0
-	for i in range(3):
+	for i in range(GOODS.size()):
 		var amount = mini(storage[i],capacity(i)-stock[i])
 		stock[i] += amount
 		storage[i] -= amount
@@ -358,8 +377,9 @@ func counter(i: int) -> Vector3:
 
 func shelf_pos(i: int) -> Vector3:
 	# The original rack is used first; overflow is sold from installed racks.
-	if stock[i]>12:
-		var n=ceili(float(stock[i]-12)/12.0)
+	var base=12 if i<3 else 0
+	if stock[i]>base or i>=3:
+		var n=maxi(1,ceili(float(stock[i]-base)/12.0))
 		for slot in range(placements.size()):
 			if placements[slot]==i:
 				n-=1
@@ -382,12 +402,16 @@ func _process(delta):
 	if delivery_eta>0:
 		delivery_eta=maxf(0,delivery_eta-delta)
 		if delivery_eta<=0:
-			for i in range(3):
+			for i in range(GOODS.size()):
 				delivery[i]+=incoming[i]
 				incoming[i]=0
 			message="Грузовик прибыл. Разгрузите поставку."
 			refresh()
 			save_game()
+	if promo_left>0:
+		promo_left=maxf(0,promo_left-delta)
+		if promo_left==0:
+			refresh()
 	if running:
 		day_clock+=delta
 		if day_clock>=120.0:
@@ -404,9 +428,9 @@ func _process(delta):
 			refresh()
 			save_game()
 		elapsed += delta
-		if running and elapsed>=maxf(3.0,6.0-workers*0.6+dirt*0.04) and customers.size()<6:
+		if running and elapsed>=maxf(1.8,6.0-workers*0.6+dirt*0.04-reputation*0.018-(1.4 if promo_left>0 else 0.0)) and customers.size()<6:
 			elapsed = 0
-			customers.append({"pos":Vector3(-4.1,0,3.65),"phase":0,"item":rng.randi_range(0,2),"timer":0.0,"carry":false,"counter":-1})
+			customers.append({"pos":Vector3(-4.1,0,3.65),"phase":0,"item":choose_product(),"timer":0.0,"carry":false,"counter":-1})
 	for c in customers:
 		if c["phase"]==0:
 			var q = customers.find(c)
@@ -431,7 +455,7 @@ func _process(delta):
 	check_rewards()
 	if tabs.current_tab==3:
 		refresh_finance()
-	info.text = "В пути: %d сек. | На разгрузке: %d\nЧистота: %d%% | Склад: %d/товар" % [ceili(delivery_eta),delivery[0]+delivery[1]+delivery[2],roundi(100-dirt),40*warehouse_level]
+	info.text = "В пути: %d сек. | На разгрузке: %d\nЧистота: %d%% | Склад: %d/товар" % [ceili(delivery_eta),sum_items(delivery),roundi(100-dirt),40*warehouse_level]
 
 func service(s: Dictionary, i: int, delta: float):
 	var home = counter(i)+Vector3(0,0,-0.95)
@@ -459,6 +483,7 @@ func service(s: Dictionary, i: int, delta: float):
 			if s["timer"]<=0:
 				if stock[item]<=0 or (prices[item]>PRICE[item]*1.25 and rng.randf()<float(prices[item]-PRICE[item])/float(PRICE[item])):
 					lost_sales+=1
+					reputation=maxf(0,reputation-1.5)
 					message="Клиент ушёл: нет товара или высокая цена."
 					c["phase"]=4
 					s["phase"]=0
@@ -470,6 +495,7 @@ func service(s: Dictionary, i: int, delta: float):
 			if move_actor(s,s["target"],delta):
 				if stock[item]<=0:
 					lost_sales+=1
+					reputation=maxf(0,reputation-1.5)
 					c["phase"]=4
 					s["phase"]=6
 				else:
@@ -501,6 +527,7 @@ func service(s: Dictionary, i: int, delta: float):
 				cost_of_sales+=unit_cost
 				play_sound()
 				sold+=1
+				reputation=minf(100,reputation+0.7)
 				payment_events.append({"pos":counter(i),"amount":prices[item]})
 				dirt=minf(100,dirt+2)
 				c["phase"]=4
@@ -529,12 +556,12 @@ func update_loader_task(task: Dictionary, delta: float):
 	var item: int=task["item"]
 	match int(task["phase"]):
 		0:
-			for i in range(3):
+			for i in range(GOODS.size()):
 				if delivery[i]>0:
 					task["item"]=i
 					task["phase"]=1
 					return
-			for i in range(3):
+			for i in range(GOODS.size()):
 				if storage[i]>0 and stock[i]<capacity(i):
 					task["item"]=i
 					task["phase"]=3
@@ -595,7 +622,7 @@ func save_game():
 			saved_storage[i]+=task["amount"]
 	var f=FileAccess.open(SAVE_PATH,FileAccess.WRITE)
 	if f:
-		f.store_string(JSON.stringify({"version":5,"supplier":supplier,"muted":muted,"rewards":rewards,"inventory_cost":inventory_cost,"prices":prices,"expenses":expenses,"cost_of_sales":cost_of_sales,"lost_sales":lost_sales,"day_number":day_number,"day_clock":day_clock,"placements":placements,"warehouse_level":warehouse_level,"incoming":incoming,"delivery_eta":delivery_eta,"cash":cash,"stock":saved_stock,"storage":saved_storage,"delivery":saved_delivery,"shelf_levels":shelf_levels,"level":level,"sold":sold,"revenue":revenue,"workers":workers,"loaders":loaders,"cleaners":cleaners,"dirt":dirt}))
+		f.store_string(JSON.stringify({"version":6,"area_level":area_level,"reputation":reputation,"promo_left":promo_left,"delivery_duration":delivery_duration,"supplier":supplier,"muted":muted,"rewards":rewards,"inventory_cost":inventory_cost,"prices":prices,"expenses":expenses,"cost_of_sales":cost_of_sales,"lost_sales":lost_sales,"day_number":day_number,"day_clock":day_clock,"placements":placements,"warehouse_level":warehouse_level,"incoming":incoming,"delivery_eta":delivery_eta,"cash":cash,"stock":saved_stock,"storage":saved_storage,"delivery":saved_delivery,"shelf_levels":shelf_levels,"level":level,"sold":sold,"revenue":revenue,"workers":workers,"loaders":loaders,"cleaners":cleaners,"dirt":dirt}))
 
 func load_game():
 	if not FileAccess.file_exists(SAVE_PATH):
@@ -607,7 +634,11 @@ func load_game():
 	supplier=clampi(int(data.get("supplier",0)),0,2)
 	muted=bool(data.get("muted",false))
 	rewards=data.get("rewards",[])
-	level=clampi(int(data.get("level",1)),1,10)
+	level=maxi(1,int(data.get("level",1)))
+	area_level=clampi(int(data.get("area_level",1)),1,2)
+	reputation=clampf(float(data.get("reputation",60)),0,100)
+	promo_left=clampf(float(data.get("promo_left",0)),0,45)
+	delivery_duration=maxf(1,float(data.get("delivery_duration",6)))
 	sold=maxi(0,int(data.get("sold",0)))
 	revenue=maxi(0,int(data.get("revenue",0)))
 	workers=clampi(int(data.get("workers",1)),1,3)
@@ -624,17 +655,18 @@ func load_game():
 	lost_sales=maxi(0,int(data.get("lost_sales",0)))
 	day_number=maxi(1,int(data.get("day_number",1)))
 	day_clock=clampf(float(data.get("day_clock",0)),0,119.99)
-	for i in range(3):
-		shelf_levels[i]=clampi(int(data.get("shelf_levels",[1,1,1])[i]),1,3)
-		var old=maxi(0,int(data.get("stock",[8,8,8])[i]))
+	for i in range(GOODS.size()):
+		shelf_levels[i]=clampi(int(array_value(data.get("shelf_levels",[]),i,1 if i<3 else 0)),0,3)
+		var old=maxi(0,int(array_value(data.get("stock",[]),i,8 if i<3 else 0)))
 		stock[i]=mini(old,capacity(i))
-		storage[i]=maxi(0,int(data.get("storage",[5,5,5])[i]))+old-stock[i]
-		delivery[i]=maxi(0,int(data.get("delivery",[0,0,0])[i]))
-	for i in range(3):
-		prices[i]=clampi(int(prices[i]),COST[i],PRICE[i]*2)
+		storage[i]=maxi(0,int(array_value(data.get("storage",[]),i,5 if i<3 else 0)))+old-stock[i]
+		delivery[i]=maxi(0,int(array_value(data.get("delivery",[]),i,0)))
+	for i in range(GOODS.size()):
+		if i>=prices.size():
+			prices.append(PRICE[i])
+		prices[i]=clampi(int(array_value(prices,i,PRICE[i])),COST[i],PRICE[i]*2)
 	inventory_cost=data.get("inventory_cost",[])
-	if inventory_cost.size()!=3:
-		inventory_cost=[]
+	if inventory_cost.is_empty():
 		for i in range(3):
 			inventory_cost.append((stock[i]+storage[i]+delivery[i]+incoming[i])*COST[i])
 	if int(data.get("version",1))<3:
@@ -737,3 +769,66 @@ func confirm_reset():
 	)
 	d.canceled.connect(d.queue_free)
 	d.popup_centered()
+
+func array_value(values: Array, i: int, fallback: int) -> int:
+	return int(values[i]) if i<values.size() else fallback
+
+func normalize_catalog():
+	for values in [stock,storage,delivery,incoming,shelf_levels,inventory_cost]:
+		while values.size()<GOODS.size():
+			values.append(0)
+	while prices.size()<GOODS.size():
+		prices.append(PRICE[prices.size()])
+	while placements.size()<12:
+		placements.append(-1)
+	for i in range(placements.size()):
+		placements[i]=int(placements[i])
+
+func sum_items(values: Array) -> int:
+	var total=0
+	for n in values:
+		total+=int(n)
+	return total
+
+func active_slots() -> int:
+	return 6 if area_level==1 else 12
+
+func active_products() -> Array:
+	var result=[]
+	for i in range(GOODS.size()):
+		if shelf_levels[i]>0:
+			result.append(i)
+	return result
+
+func choose_product() -> int:
+	var options=active_products()
+	return int(options[rng.randi_range(0,options.size()-1)]) if not options.is_empty() else 0
+
+func unlock_level(i: int) -> int:
+	return [1,1,1,2,2,3,3,4,4,5,5,6][i]
+
+func unlocked(i: int) -> bool:
+	return level>=unlock_level(i)
+
+func equipment_cost(i: int) -> int:
+	return 150*maxi(1,shelf_levels[i]) if i<3 else 180+50*shelf_levels[i]
+
+func expand_area():
+	if area_level>=2 or cash<450:
+		return
+	area_level=2
+	cash-=450
+	expenses+=450
+	message="Открыт новый торговый зал: ещё 6 площадок!"
+	refresh()
+	save_game()
+
+func start_promo():
+	if promo_left>0 or cash<60:
+		return
+	cash-=60
+	expenses+=60
+	promo_left=45
+	message="Реклама запущена. Покупателей станет больше."
+	refresh()
+	save_game()

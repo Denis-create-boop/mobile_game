@@ -25,6 +25,7 @@ var dirt_marks: Array = []
 var delivery_boxes: Array = []
 var tick: float = 0.0
 var build_pads: Array = []
+var annex: Node3D
 var built_racks: Array = []
 var built_items: Array = []
 var truck: Node3D
@@ -143,7 +144,7 @@ func select_pad(pos: Vector2):
 	if absf(direction.y)<0.001:
 		return
 	var point=origin+direction*(-origin.y/direction.y)
-	for i in range(6):
+	for i in range(game.active_slots()):
 		var pad: Vector3=game.build_slot(i)
 		if absf(point.x-pad.x)<1.18 and absf(point.z-pad.z)<0.85:
 			game.place_equipment(i)
@@ -348,7 +349,13 @@ func build_extension():
 			box(stage,Vector3(5.1+x,-0.04,z-3.5),Vector3(0.98,0.08,0.98),color)
 	box(stage,Vector3(8.6,0.85,-4),Vector3(8.3,1.7,0.18),cream)
 	box(stage,Vector3(8.6,1.77,-4),Vector3(8.3,0.12,0.26),mint)
-	for i in range(6):
+	annex=Node3D.new()
+	stage.add_child(annex)
+	box(annex,Vector3(8.6,-0.29,5.8),Vector3(8.2,0.48,4.4),Color("#688e82"))
+	for x in range(8):
+		for z in range(4):
+			box(annex,Vector3(5.1+x,-0.04,4.0+z),Vector3(0.98,0.08,0.98),Color("#b6a78b") if (x+z)%2==0 else Color("#c8bba0"))
+	for i in range(12):
 		var center: Vector3=game.build_slot(i)
 		var pad=box(stage,center+Vector3(0,0.015,0),Vector3(2.4,0.035,1.65),Color("#91bdab"))
 		build_pads.append(pad)
@@ -382,15 +389,15 @@ func install_rack(slot: int, kind: int):
 	var rack=Node3D.new()
 	stage.add_child(rack)
 	rack.position=game.build_slot(slot)
-	var color=Color("#63a9c4") if kind==1 else Color("#398675")
+	var color=Color("#63a9c4") if kind in [1,3,8,11] else Color("#398675")
 	var cream=Color("#f1e8d4")
-	var height=1.8 if kind!=2 else 1.15
+	var height=1.15 if kind in [2,7] else 1.8
 	box(rack,Vector3(0,height/2,-0.36),Vector3(2.25,height,0.12),color)
 	for x in [-1.09,1.09]:
 		box(rack,Vector3(x,height/2,0),Vector3(0.1,height,0.9),color)
 	var items: Array=[]
 	for y in [0.22,0.75,1.28]:
-		var yy: float=y if kind!=2 else y*0.62
+		var yy: float=y*0.62 if kind in [2,7] else y
 		box(rack,Vector3(0,yy,0),Vector3(2.25,0.09,0.9),cream)
 		for j in range(4):
 			var p=Vector3(-0.79+j*0.52,yy+0.18,0.04)
@@ -399,8 +406,14 @@ func install_rack(slot: int, kind: int):
 				item=box(rack,p,Vector3(0.29,0.32,0.27),Color("#a5d4ea"))
 			elif kind==0:
 				item=ball(rack,p,Vector3(0.4,0.26,0.46),Color("#d39b54"))
-			else:
+			elif kind==2:
 				item=ball(rack,p,Vector3(0.31,0.3,0.31),Color("#d85b50"))
+			else:
+				var colors=[Color("#e9bf61"),Color("#f29b4d"),Color("#704b36"),Color("#874b51"),Color("#71a85c"),Color("#d2a3c6"),Color("#568a63"),Color("#dbb56d"),Color("#8ecedb")]
+				if kind in [7]:
+					item=ball(rack,p,Vector3(0.34,0.27,0.34),colors[kind-3])
+				else:
+					item=box(rack,p,Vector3(0.28,0.32,0.25),colors[kind-3])
 			items.append(item)
 	box(rack,Vector3(0,height+0.04,0),Vector3(2.25,0.16,0.92),color)
 	sign_text(rack,Vector3(0,height+0.04,0.47),game.GOODS[kind],Color.WHITE,0.004)
@@ -458,18 +471,19 @@ func _process(delta):
 		return
 	tick+=delta
 	if game.build_kind>=0:
-		focus_goal=Vector3(7.8,0.5,0)
-		zoom_goal=maxf(zoom_goal,11.5)
+		focus_goal=Vector3(8.4,0.5,2.2 if game.area_level>=2 else 0)
+		zoom_goal=maxf(zoom_goal,14.0 if game.area_level>=2 else 11.5)
 	elif focus_goal.x>5:
 		focus_goal=Vector3(0,0.5,0)
 		zoom_goal=10.8
 	focus=focus.lerp(focus_goal,minf(1,delta*4))
 	camera_zoom=lerpf(camera_zoom,zoom_goal,minf(1,delta*6))
 	update_camera()
-	var displayed=[12,12,12]
-	for i in range(6):
+	var displayed=[12,12,12,0,0,0,0,0,0,0,0,0]
+	annex.visible=game.area_level>=2
+	for i in range(12):
 		var kind: int=game.placements[i]
-		build_pads[i].visible=game.build_kind>=0 and kind<0
+		build_pads[i].visible=game.build_kind>=0 and kind<0 and i<game.active_slots()
 		if kind>=0:
 			if built_racks[i]==null:
 				install_rack(i,kind)
@@ -478,9 +492,9 @@ func _process(delta):
 			displayed[kind]+=12
 	for i in range(warehouse_extra.size()):
 		warehouse_extra[i].visible=game.warehouse_level>i+1
-	var at_dock: bool=game.delivery[0]+game.delivery[1]+game.delivery[2]>0 or game.unloading()
+	var at_dock: bool=game.sum_items(game.delivery)>0 or game.unloading()
 	truck.visible=game.delivery_eta>0 or at_dock
-	truck.position=Vector3(-6.6,0,lerpf(-1.6,7.0,clampf(game.delivery_eta/6.0,0,1))) if game.delivery_eta>0 and not at_dock else Vector3(-6.6,0,-1.6)
+	truck.position=Vector3(-6.6,0,lerpf(-1.6,7.0,clampf(game.delivery_eta/game.delivery_duration,0,1))) if game.delivery_eta>0 and not at_dock else Vector3(-6.6,0,-1.6)
 	for event in game.payment_events:
 		var tag=Label3D.new()
 		tag.text="+"+str(event["amount"])
@@ -513,7 +527,7 @@ func _process(delta):
 			actor(employees[i],s["pos"],s["carry"],delta)
 		delivery_boxes[i].visible=game.delivery[0]+game.delivery[1]+game.delivery[2]>i*5
 	for i in range(crates.size()):
-		crates[i].visible=game.storage[0]+game.storage[1]+game.storage[2]>i*4
+		crates[i].visible=game.sum_items(game.storage)>i*4
 	for i in range(dirt_marks.size()):
 		dirt_marks[i].visible=game.dirt>i*15+8
 	for i in range(3):
