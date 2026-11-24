@@ -2,9 +2,11 @@
 """Install Kenney CC0 GLB packs locally; keep archive license texts."""
 from pathlib import Path
 from urllib.request import urlopen, Request
-from zipfile import ZipFile
+from zipfile import ZipFile, is_zipfile
 from io import BytesIO
 import json, shutil, re
+from urllib.error import URLError
+from urllib.parse import urlparse
 
 ROOT=Path(__file__).resolve().parents[1]
 DEST=ROOT/"assets"/"kenney"
@@ -14,6 +16,26 @@ PACKS={
  "food":"https://kenney.nl/media/pages/assets/food-kit/83086fa91c-1719418518/kenney_food-kit.zip"
 }
 def normalize(s): return re.sub(r"[^a-z0-9]","",s.lower())
+def download(pack, url):
+ filename=url.rsplit("/",1)[-1]
+ local=ROOT/"downloads"/filename
+ if local.exists() and is_zipfile(local):
+  return local.read_bytes()
+ sources=["https://opengameart.org/sites/default/files/"+filename,url]
+ for source in sources:
+  try:
+   print("Trying",source,flush=True)
+   request=Request(source,headers={"User-Agent":"Mozilla/5.0","Accept":"application/zip, application/octet-stream, */*","Referer":source.rsplit("/",1)[0]+"/"})
+   with urlopen(request,timeout=60) as response:
+    data=response.read()
+   if not is_zipfile(BytesIO(data)):
+    print("Not a ZIP:",len(data),"bytes; trying next source",flush=True)
+    continue
+   return data
+  except (OSError,URLError) as exc:
+   print("Download failed:",exc,flush=True)
+ raise SystemExit("Cannot download "+pack+". Download "+filename+" manually from Kenney or OpenGameArt, upload into downloads/ and rerun.")
+
 def install():
  DEST.mkdir(parents=True,exist_ok=True)
  manifest={}
@@ -22,8 +44,7 @@ def install():
   folder.mkdir(exist_ok=True)
   if not list(folder.rglob("*.glb")):
    print("Downloading",pack,flush=True)
-   with urlopen(Request(url,headers={"User-Agent":"MarketEmpire asset installer"}),timeout=90) as r:
-    data=r.read()
+   data=download(pack,url)
    with ZipFile(BytesIO(data)) as z:
     for info in z.infolist():
      path=Path(info.filename.replace("\\","/"))
