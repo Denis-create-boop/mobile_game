@@ -9,6 +9,15 @@ var people: Array = []
 var employees: Array = []
 var last_stock: Array = []
 var last_workers: int = -1
+var extras: Array = []
+var extra_goods: Array = []
+var counters: Array = []
+var loader: Node3D
+var cleaner: Node3D
+var crates: Array = []
+var dirt_marks: Array = []
+var delivery_boxes: Array = []
+var tick: float = 0.0
 var status_label: Label
 var sales_label: Label
 
@@ -18,6 +27,7 @@ func _ready():
 	viewport = SubViewport.new()
 	viewport.size = Vector2i(640,420)
 	viewport.own_world_3d = true
+	viewport.msaa_3d = Viewport.MSAA_2X
 	viewport.render_target_update_mode = SubViewport.UPDATE_ALWAYS
 	add_child(viewport)
 	stage = Node3D.new()
@@ -28,17 +38,17 @@ func _ready():
 	e.background_color = Color("#b9d5cb")
 	e.ambient_light_source = Environment.AMBIENT_SOURCE_COLOR
 	e.ambient_light_color = Color("#edf7ef")
-	e.ambient_light_energy = 0.75
+	e.ambient_light_energy = 0.45
 	env.environment = e
 	stage.add_child(env)
 	var light = DirectionalLight3D.new()
 	light.rotation_degrees = Vector3(-57,-38,0)
-	light.light_energy = 1.25
+	light.light_energy = 0.8
 	light.shadow_enabled = true
 	stage.add_child(light)
 	camera = Camera3D.new()
 	camera.projection = Camera3D.PROJECTION_ORTHOGONAL
-	camera.size = 13.5
+	camera.size = 11.8
 	camera.position = Vector3(10,12,14)
 	stage.add_child(camera)
 	camera.look_at(Vector3(0,0.3,0))
@@ -155,14 +165,47 @@ func build_store():
 					ball(item,Vector3(-0.06+k*0.20,0.27,0),Vector3(0.11,0.035,0.06),mint)
 			row.append(item)
 		products.append(row)
-	# Checkout, belt, screen, payment terminal.
-	box(stage,Vector3(3.1,0.48,2.3),Vector3(2.5,0.96,1.1),mint)
-	box(stage,Vector3(3.1,1.0,2.3),Vector3(2.6,0.13,1.17),cream)
-	box(stage,Vector3(2.7,1.09,2.3),Vector3(1.45,0.07,0.78),Color("#39484b"))
-	box(stage,Vector3(3.95,1.25,2.15),Vector3(0.14,0.33,0.14),Color("#36474b"))
-	box(stage,Vector3(3.95,1.49,2.15),Vector3(0.65,0.43,0.1),Color("#263b42"))
-	box(stage,Vector3(3.95,1.49,2.21),Vector3(0.56,0.34,0.02),Color("#a4e3bc"))
-	sign_text(stage,Vector3(3.1,0.55,2.86),"КАССА",Color.WHITE,0.006)
+		var expansions: Array = []
+		var more_goods: Array = []
+		for k in range(2):
+			var extra = Node3D.new()
+			stage.add_child(extra)
+			extra.position = Vector3(x,0,-2.1-float(k+1)*0.48)
+			# Expanded rack rises above the original shelf.
+			box(extra,Vector3(0,2.15+k*0.45,0.25),Vector3(2.5,0.12,0.8),mint)
+			for j in range(12):
+				var product = Node3D.new()
+				extra.add_child(product)
+				product.position=Vector3(-0.96+(j%6)*0.38,2.30+k*0.45,0.08+floori(j/6.0)*0.3)
+				ball(product,Vector3.ZERO,Vector3(0.25,0.25,0.25),game.COLORS[i])
+				more_goods.append(product)
+			extra.visible=false
+			expansions.append(extra)
+		extras.append(expansions)
+		extra_goods.append(more_goods)
+	for i in range(3):
+		var counter = Node3D.new()
+		stage.add_child(counter)
+		counter.position = game.counter(i)
+		box(counter,Vector3(0,0.48,0),Vector3(2.2,0.96,0.8),mint)
+		box(counter,Vector3(0,1.0,0),Vector3(2.3,0.13,0.85),cream)
+		box(counter,Vector3(-0.3,1.09,0),Vector3(1.2,0.07,0.6),Color("#39484b"))
+		box(counter,Vector3(0.7,1.27,0),Vector3(0.45,0.35,0.12),Color("#263b42"))
+		sign_text(counter,Vector3(0,0.55,0.43),"КАССА "+str(i+1),Color.WHITE,0.005)
+		counters.append(counter)
+		counter.visible = i<game.workers
+	# Warehouse and delivery zone.
+	box(stage,Vector3(-4.4,0.06,1.2),Vector3(0.95,0.1,1.4),Color("#b69367"))
+	sign_text(stage,Vector3(-4.4,1.1,1.4),"СКЛАД",Color("#243841"),0.006)
+	for i in range(9):
+		var crate=box(stage,Vector3(-4.6+(i%2)*0.43,0.27+floori(i/4.0)*0.42,0.65+(floori(i/2.0)%2)*0.48),Vector3(0.39,0.4,0.43),wood)
+		crates.append(crate)
+	box(stage,Vector3(-4.4,0.04,-0.4),Vector3(0.95,0.08,1.0),Color("#e7bb69"))
+	sign_text(stage,Vector3(-4.4,0.65,-0.2),"ПОСТАВКА",Color("#243841"),0.004)
+	for i in range(3):
+		delivery_boxes.append(box(stage,Vector3(-4.4,0.25+i*0.38,-0.45),Vector3(0.65,0.36,0.6),wood))
+	for i in range(6):
+		dirt_marks.append(ball(stage,Vector3(-3+i*0.95,0.012,0.3+sin(i)*0.7),Vector3(0.45,0.02,0.3),Color("#98876c")))
 	for pos in [Vector3(-4.25,0,3),Vector3(4.3,0,-3.15)]:
 		cylinder(stage,pos+Vector3(0,0.22,0),0.25,0.44,wood)
 		for j in range(5):
@@ -173,6 +216,13 @@ func build_store():
 		employee.position = Vector3(3.8-i*1.1,0,1.3)
 		employee.visible = false
 		employees.append(employee)
+		add_carry(employee)
+	loader=person(Color("#cf913c"))
+	add_carry(loader)
+	cleaner=person(Color("#758fc7"))
+	var broom=box(cleaner,Vector3(0.34,0.45,0.16),Vector3(0.055,0.95,0.055),wood)
+	broom.rotation.z=-0.3
+	box(cleaner,Vector3(0.48,0.08,0.16),Vector3(0.25,0.12,0.2),Color("#c59e65"))
 
 func person(color: Color) -> Node3D:
 	var p = Node3D.new()
@@ -202,31 +252,78 @@ func person(color: Color) -> Node3D:
 		ball(p,Vector3(direction*0.07,1.21,0.16),Vector3(0.035,0.045,0.025),Color("#3f3530"))
 	return p
 
-func _process(_delta):
-	if not is_instance_valid(game) or status_label == null:
+func add_carry(p: Node3D):
+	var b=box(p,Vector3(0,0.72,0.3),Vector3(0.32,0.28,0.28),Color("#c99458"))
+	b.visible=false
+	p.set_meta("carry",b)
+
+func actor(p: Node3D, target: Vector3, carrying: bool, dt: float):
+	var direction=target-p.position
+	if direction.length()>0.001:
+		p.rotation.y=atan2(direction.x,direction.z)
+		p.get_meta("left").rotation.x=sin(tick*12)*0.5
+		p.get_meta("right").rotation.x=-sin(tick*12)*0.5
+	else:
+		p.get_meta("left").rotation.x=0
+		p.get_meta("right").rotation.x=0
+	p.position=target
+	p.get_meta("carry").visible=carrying
+
+func _process(delta):
+	if not is_instance_valid(game) or status_label==null:
 		return
-	if game.stock != last_stock:
-		last_stock = game.stock.duplicate()
-		for i in range(3):
-			for j in range(products[i].size()):
-				products[i][j].visible = j < game.stock[i]
-	if game.workers != last_workers:
-		last_workers = game.workers
-		for i in range(employees.size()):
-			employees[i].visible = i < game.workers
-	while people.size() < game.customers.size():
-		people.append(person(Color("#d78c71").lerp(Color("#759cc9"),float(people.size()%4)/3.0)))
-	while people.size() > game.customers.size():
+	tick+=delta
+	for i in range(3):
+		for j in range(products[i].size()):
+			products[i][j].visible=j<game.stock[i]
+		for k in range(2):
+			extras[i][k].visible=game.shelf_levels[i]>k+1
+		for j in range(extra_goods[i].size()):
+			extra_goods[i][j].visible=j+12<game.stock[i]
+		employees[i].visible=i<game.workers
+		counters[i].visible=i<game.workers
+		if i<game.sellers.size():
+			var s=game.sellers[i]
+			actor(employees[i],s["pos"],s["carry"],delta)
+		delivery_boxes[i].visible=game.delivery[0]+game.delivery[1]+game.delivery[2]>i*5
+	for i in range(crates.size()):
+		crates[i].visible=game.storage[0]+game.storage[1]+game.storage[2]>i*4
+	for i in range(dirt_marks.size()):
+		dirt_marks[i].visible=game.dirt>i*15+8
+	loader.visible=game.loaders>0
+	cleaner.visible=game.cleaners>0
+	actor(loader,game.loader_pos,game.loader_amount>0,delta)
+	var clean_target: Vector3=game.cleaner_pos
+	update_cleaner(clean_target)
+	while people.size()<game.customers.size():
+		var p=person(Color("#d78c71").lerp(Color("#759cc9"),float(people.size()%4)/3.0))
+		add_carry(p)
+		var tag=Label3D.new()
+		tag.position=Vector3(0,1.8,0)
+		tag.billboard=BaseMaterial3D.BILLBOARD_ENABLED
+		tag.font_size=42
+		tag.pixel_size=0.006
+		tag.modulate=Color("#fff5cc")
+		tag.outline_modulate=Color("#263b42")
+		tag.outline_size=8
+		p.add_child(tag)
+		p.set_meta("order",tag)
+		people.append(p)
+	while people.size()>game.customers.size():
 		people.pop_back().queue_free()
 	for i in range(people.size()):
-		var progress: float = game.customers[i]["progress"]
-		var p: Node3D = people[i]
-		var x = lerpf(-2.5,2.0,progress)
-		var z = 3.3-sin(progress*PI)*3.1
-		p.position = Vector3(x,0,z)
-		p.rotation.y = 1.4
-		p.get_meta("left").rotation.x = sin(progress*35.0)*0.5
-		p.get_meta("right").rotation.x = -sin(progress*35.0)*0.5
-	status_label.text = "МАГАЗИН ОТКРЫТ" if game.running else "МАГАЗИН ЗАКРЫТ"
-	sales_label.position = Vector2(12,size.y-28)
-	sales_label.text = "Выручка: %d мон.  |  Вместимость: %d" % [game.revenue,game.capacity()]
+		var c=game.customers[i]
+		actor(people[i],c["pos"],c["carry"],delta)
+		var tag: Label3D=people[i].get_meta("order")
+		tag.text=game.GOODS[c["item"]] if c["phase"]<4 and not c["carry"] else ("Оплата" if c["carry"] and c["phase"]<4 else "")
+	status_label.text="МАГАЗИН ОТКРЫТ" if game.running else "МАГАЗИН ЗАКРЫТ"
+	sales_label.position=Vector2(12,size.y-28)
+	sales_label.text="Выручка: %d мон. | Клиентов: %d" % [game.revenue,game.customers.size()]
+
+func update_cleaner(target: Vector3):
+	var d=target-cleaner.position
+	if d.length()>0.001:
+		cleaner.rotation.y=atan2(d.x,d.z)
+		cleaner.get_meta("left").rotation.x=sin(tick*10)*0.35
+		cleaner.get_meta("right").rotation.x=-sin(tick*10)*0.35
+	cleaner.position=target
