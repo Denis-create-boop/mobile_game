@@ -4,3 +4,5 @@ build/
 *.aab
 *.keystore
 *.jks
+
+assets/kenney/

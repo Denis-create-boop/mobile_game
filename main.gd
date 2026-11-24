@@ -69,6 +69,8 @@ var hud: Label
 var hint: Label
 var shop_rows: Array[Button] = []
 var show_locked: bool = false
+var management_panel: PanelContainer
+var management_toggle: Button
 var filter_button: Button
 var stock_status: Label
 var music: AudioStreamPlayer
@@ -156,6 +158,7 @@ func build_ui():
 	world.add_child(visual)
 	visual.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 	var panel = PanelContainer.new()
+	management_panel=panel
 	panel.custom_minimum_size.x = 318
 	panel.add_theme_stylebox_override("panel", style(Color("#203038")))
 	row.add_child(panel)
@@ -205,11 +208,12 @@ func build_ui():
 	root.add_child(toolbar)
 	open_button = button(toolbar, "", toggle_shop)
 	button(toolbar, "Меню", show_menu)
-	button(toolbar, "Сохранить", save_game)
+	management_toggle=button(toolbar,"Панель",toggle_management)
+	button(toolbar, "Сохр.", save_game)
 	button(toolbar, "−", func(): visual.zoom(1.15))
 	button(toolbar, "+", func(): visual.zoom(0.87))
-	button(toolbar, "↶", func(): visual.rotate_view(-1))
-	button(toolbar, "↷", func(): visual.rotate_view(1))
+	button(toolbar, "Влево", func(): visual.rotate_view(-1))
+	button(toolbar, "Вправо", func(): visual.rotate_view(1))
 	button(toolbar, "Обзор", func(): visual.overview())
 	button(toolbar, "Сброс", func(): visual.reset_view())
 	hint = label(root, "", 16)
@@ -924,3 +928,7 @@ func setup_music():
 	music.stream=wav
 	if music_enabled:
 		music.play()
+
+func toggle_management():
+	management_panel.visible=not management_panel.visible
+	management_toggle.text="Панель" if management_panel.visible else "Управление"

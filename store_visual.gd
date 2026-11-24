@@ -1,6 +1,8 @@
 extends SubViewportContainer
 
 var game
+var asset_library=preload("res://asset_library.gd").new()
+var character_serial: int=0
 var viewport: SubViewport
 var stage: Node3D
 var camera: Camera3D
@@ -68,8 +70,8 @@ func _ready():
 	scene_light=light
 	light.shadow_enabled = true
 	light.directional_shadow_max_distance=30.0
-	light.shadow_bias=0.12
-	light.shadow_normal_bias=0.35
+	light.shadow_bias=0.25
+	light.shadow_normal_bias=1.0
 	stage.add_child(light)
 	camera = Camera3D.new()
 	camera.projection = Camera3D.PROJECTION_ORTHOGONAL
@@ -257,7 +259,9 @@ func build_store():
 			var item = Node3D.new()
 			shelf.add_child(item)
 			item.position = Vector3(-0.88+(j%4)*0.58,0.29+floori(j/4.0)*0.61,0.07)
-			if i==0:
+			if asset_library.food(i,item,Vector3.ZERO)!=null:
+				pass
+			elif i==0:
 				ball(item,Vector3(0,0.15,0),Vector3(0.42,0.3,0.55),Color("#c88a43"))
 				for k in range(3):
 					var mark = box(item,Vector3(-0.12+k*0.12,0.29,0),Vector3(0.04,0.015,0.21),Color("#f3cc87"))
@@ -295,10 +299,11 @@ func build_store():
 		var counter = Node3D.new()
 		stage.add_child(counter)
 		counter.position = game.counter(i)
-		box(counter,Vector3(0,0.48,0),Vector3(2.2,0.96,0.8),mint)
-		box(counter,Vector3(0,1.0,0),Vector3(2.3,0.13,0.85),cream)
-		box(counter,Vector3(-0.3,1.09,0),Vector3(1.2,0.07,0.6),Color("#39484b"))
-		box(counter,Vector3(0.7,1.27,0),Vector3(0.45,0.35,0.12),Color("#263b42"))
+		if asset_library.spawn("market",["checkout","cashregister","counter"],counter,Vector3.ZERO,Vector3(2.3,1.3,0.85))==null:
+			box(counter,Vector3(0,0.48,0),Vector3(2.2,0.96,0.8),mint)
+			box(counter,Vector3(0,1.0,0),Vector3(2.3,0.13,0.85),cream)
+			box(counter,Vector3(-0.3,1.09,0),Vector3(1.2,0.07,0.6),Color("#39484b"))
+			box(counter,Vector3(0.7,1.27,0),Vector3(0.45,0.35,0.12),Color("#263b42"))
 		sign_text(counter,Vector3(0,0.55,0.43),"КАССА "+str(i+1),Color.WHITE,0.005)
 		counters.append(counter)
 		counter.visible = i<game.workers
@@ -419,8 +424,10 @@ func install_rack(slot: int, kind: int):
 		box(rack,Vector3(0,yy,0),Vector3(2.25,0.09,0.9),cream)
 		for j in range(4):
 			var p=Vector3(-0.79+j*0.52,yy+0.18,0.04)
-			var item: MeshInstance3D
-			if kind==1:
+			var item: Node3D=asset_library.food(kind,rack,p-Vector3(0,0.16,0))
+			if item!=null:
+				pass
+			elif kind==1:
 				item=box(rack,p,Vector3(0.29,0.32,0.27),Color("#a5d4ea"))
 			elif kind==0:
 				item=ball(rack,p,Vector3(0.4,0.26,0.46),Color("#d39b54"))
@@ -442,6 +449,20 @@ func person(color: Color) -> Node3D:
 	var p = Node3D.new()
 	stage.add_child(p)
 	p.scale=Vector3(1.18,1.18,1.18)
+	var names: Array=[]
+	var entries: Dictionary=asset_library.catalog.get("people",{})
+	for key in entries:
+		if not String(key).contains("wheelchair"):
+			names.append(key)
+	if not names.is_empty():
+		var model=asset_library.spawn("people",[names[character_serial%names.size()]],p,Vector3.ZERO,Vector3(0.70,1.46,0.66))
+		character_serial+=1
+		if model!=null:
+			p.set_meta("model",model)
+			var animations=model.find_children("*","AnimationPlayer",true,false)
+			if not animations.is_empty():
+				p.set_meta("animation",animations[0])
+			return p
 	var skin = Color("#eac1a2")
 	var pants = Color("#364d60")
 	var left = Node3D.new()
@@ -479,13 +500,20 @@ func add_carry(p: Node3D):
 
 func actor(p: Node3D, target: Vector3, carrying: bool, dt: float):
 	var direction=target-p.position
-	if direction.length()>0.001:
+	var walking=direction.length()>0.001
+	if walking:
 		p.rotation.y=atan2(direction.x,direction.z)
-		p.get_meta("left").rotation.x=sin(tick*12)*0.5
-		p.get_meta("right").rotation.x=-sin(tick*12)*0.5
-	else:
-		p.get_meta("left").rotation.x=0
-		p.get_meta("right").rotation.x=0
+	if p.has_meta("left"):
+		p.get_meta("left").rotation.x=sin(tick*12)*0.5 if walking else 0
+		p.get_meta("right").rotation.x=-sin(tick*12)*0.5 if walking else 0
+	elif p.has_meta("animation"):
+		var player: AnimationPlayer=p.get_meta("animation")
+		var wanted="walk" if walking else "idle"
+		for animation in player.get_animation_list():
+			if String(animation).to_lower().contains(wanted):
+				if player.current_animation!=animation or not player.is_playing():
+					player.play(animation)
+				break
 	p.position=target
 	p.get_meta("carry").visible=carrying
 
@@ -645,7 +673,7 @@ void fragment(){
  float edge=min(min(uv.x,1.0-uv.x),min(uv.y,1.0-uv.y));
  float grout=smoothstep(0.012,0.028,edge);
  float variation=fract(sin(dot(cell,vec2(12.9898,78.233)))*43758.5453);
- float grain=sin(coord.x*155.0+sin(coord.y*52.0))*0.012;
+ float grain=0.0;
  vec3 tile_color=tint*(0.92+variation*0.10+grain);
  ALBEDO=mix(tint*0.60,tile_color,grout);
  ROUGHNESS=0.86;

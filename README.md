@@ -24,3 +24,9 @@ python -m http.server 8000 --bind 0.0.0.0 --directory build/web
 - 3D-сцена, камера, локальное сохранение и настройки звука/графики.
 
 Проект находится в разработке. Android-экспорт и публикация пока не настроены.
+
+## Игровые модели
+
+Перед импортом Godot выполните `python scripts/install_assets.py`. Скрипт скачивает оригинальные GLB-модели Kenney Mini Market, Mini Characters и Food Kit (CC0). При отсутствии моделей игра использует встроенную графику. Архивы и лицензии сохраняются локально; исходный код не зависит от сетевого доступа во время игры.
+
+Источники: https://kenney.nl/assets/mini-market · https://kenney.nl/assets/mini-characters · https://kenney.nl/assets/food-kit
