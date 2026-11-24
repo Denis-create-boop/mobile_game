@@ -5,6 +5,13 @@ const GOODS = ["Хлеб", "Молоко", "Яблоки"]
 const COST = [12, 18, 10]
 const PRICE = [22, 32, 19]
 const COLORS = [Color("#d6a660"), Color("#91c9ed"), Color("#e17c68")]
+var menu: PanelContainer
+var sound: AudioStreamPlayer
+var muted: bool = false
+var supplier: int = 0
+var supplier_button: Button
+var rewards: Array = []
+var inventory_cost: Array = [156,234,130]
 var cash: int = 500
 var stock: Array = [8, 8, 8]
 var level: int = 1
@@ -70,7 +77,9 @@ func _ready():
 	for i in range(cleaners):
 		add_cleaner()
 	build_ui()
+	setup_sound()
 	refresh()
+	show_menu()
 
 func style(bg: Color, radius: int = 12) -> StyleBoxFlat:
 	var s = StyleBoxFlat.new()
@@ -143,6 +152,7 @@ func build_ui():
 	panel.add_child(tabs)
 	var side = tab_page("Товары")
 	label(side, "ПОСТАВКИ · ПОЛКА / СКЛАД", 15)
+	supplier_button=button(side,"",switch_supplier)
 	for i in range(GOODS.size()):
 		shop_rows.append(button(side, "", buy.bind(i)))
 	info = label(side, "", 13)
@@ -176,6 +186,7 @@ func build_ui():
 	var toolbar = HBoxContainer.new()
 	root.add_child(toolbar)
 	open_button = button(toolbar, "", toggle_shop)
+	button(toolbar, "Меню", show_menu)
 	button(toolbar, "Сохранить", save_game)
 	button(toolbar, "−", func(): visual.zoom(1.15))
 	button(toolbar, "+", func(): visual.zoom(0.87))
@@ -247,13 +258,13 @@ func refresh_finance():
 	finance_label.text="День %d · %d%% смены\nВыручка: %d\nСебестоимость продаж: %d\nОперационные расходы: %d\nПрибыль от продаж: %d\nУшли без покупки: %d" % [day_number,roundi(day_clock/1.2),revenue,cost_of_sales,expenses,revenue-cost_of_sales-expenses,lost_sales]
 	for i in range(3):
 		price_labels[i].text="%s · %d мон." % [GOODS[i],prices[i]]
-	goals_label.text="ЦЕЛИ\n%s  Продать 50 товаров (%d/50)\n%s  Нанять грузчика\n%s  Построить 3 новых полки" % ["✓" if sold>=50 else "○",mini(sold,50),"✓" if loaders>0 else "○","✓" if level>=4 else "○"]
+	goals_label.text="Достижения: %d/5\n" % rewards.size()+"ЦЕЛИ\n%s  Продать 50 товаров (%d/50)\n%s  Нанять грузчика\n%s  Построить 3 новых полки" % ["✓" if sold>=50 else "○",mini(sold,50),"✓" if loaders>0 else "○","✓" if level>=4 else "○"]
 
 func refresh():
 	hud.text = "Баланс %d мон.   Ур. %d   Продано %d" % [cash, level, sold]
 	for i in range(3):
-		shop_rows[i].text = "%s %d/%d | склад %d | +5 за %d" % [GOODS[i],stock[i],capacity(i),storage[i],COST[i]*5]
-		shop_rows[i].disabled = cash < COST[i]*5 or storage[i]+delivery[i]+incoming[i]+5 > 40*warehouse_level
+		shop_rows[i].text = "%s %d/%d | склад %d | +5 за %d" % [GOODS[i],stock[i],capacity(i),storage[i],supplier_cost(i)*5]
+		shop_rows[i].disabled = cash < supplier_cost(i)*5 or storage[i]+delivery[i]+incoming[i]+5 > 40*warehouse_level
 		shelf_buttons[i].text = "%s: прилавок %d · %d мон." % [GOODS[i],shelf_levels[i],150*shelf_levels[i]]
 		shelf_buttons[i].disabled = shelf_levels[i]>=3 or cash<150*shelf_levels[i]
 	var counts = [workers,loaders,cleaners]
@@ -264,6 +275,7 @@ func refresh():
 	open_button.text = "Закрыть магазин" if running else "Открыть магазин"
 	info.text = "В пути: %d сек. | На разгрузке: %d\nЧистота: %d%% | Склад: %d/товар" % [ceili(delivery_eta),delivery[0]+delivery[1]+delivery[2],roundi(100-dirt),40*warehouse_level]
 	hint.text = message
+	supplier_button.text=["Местный · 6 сек.","Оптовик · 12 сек. / скидка","Экспресс · 3 сек. / доплата"][supplier]
 	refresh_finance()
 
 func capacity(i: int = 0) -> int:
@@ -273,12 +285,13 @@ func role_cost(i: int) -> int:
 	return [220*workers,140*(loaders+1),100*(cleaners+1)][i]
 
 func buy(i: int):
-	if cash<COST[i]*5 or storage[i]+delivery[i]+incoming[i]+5>40*warehouse_level:
+	if cash<supplier_cost(i)*5 or storage[i]+delivery[i]+incoming[i]+5>40*warehouse_level:
 		return
-	cash -= COST[i]*5
+	cash -= supplier_cost(i)*5
+	inventory_cost[i] += supplier_cost(i)*5
 	incoming[i] += 5
 	if delivery_eta<=0:
-		delivery_eta=6.0
+		delivery_eta=[6.0,12.0,3.0][supplier]
 	message = "Заказ поставщику: " + GOODS[i]
 	refresh()
 	save_game()
@@ -364,7 +377,7 @@ func move_actor(actor: Dictionary, target: Vector3, delta: float, speed: float =
 	return actor["pos"].distance_to(target)<0.03
 
 func _process(delta):
-	if world == null:
+	if world == null or (menu!=null and menu.visible):
 		return
 	if delivery_eta>0:
 		delivery_eta=maxf(0,delivery_eta-delta)
@@ -415,6 +428,7 @@ func _process(delta):
 		dirt=maxf(0,dirt-delta*cleaners*0.65)
 	if running or not customers.is_empty():
 		dirt=minf(100,dirt+delta*0.12)
+	check_rewards()
 	if tabs.current_tab==3:
 		refresh_finance()
 	info.text = "В пути: %d сек. | На разгрузке: %d\nЧистота: %d%% | Склад: %d/товар" % [ceili(delivery_eta),delivery[0]+delivery[1]+delivery[2],roundi(100-dirt),40*warehouse_level]
@@ -475,7 +489,17 @@ func service(s: Dictionary, i: int, delta: float):
 			if s["timer"]<=0:
 				cash+=prices[item]
 				revenue+=prices[item]
-				cost_of_sales+=COST[item]
+				var remaining: int=stock[item]+storage[item]+delivery[item]+incoming[item]+1
+				for task in loader_tasks:
+					if task["item"]==item:
+						remaining+=task["amount"]
+				for other in sellers:
+					if other!=s and other["item"]==item and other["phase"] in [4,5]:
+						remaining+=1
+				var unit_cost=clampi(roundi(float(inventory_cost[item])/maxi(1,remaining)),0,int(inventory_cost[item]))
+				inventory_cost[item]-=unit_cost
+				cost_of_sales+=unit_cost
+				play_sound()
 				sold+=1
 				payment_events.append({"pos":counter(i),"amount":prices[item]})
 				dirt=minf(100,dirt+2)
@@ -571,7 +595,7 @@ func save_game():
 			saved_storage[i]+=task["amount"]
 	var f=FileAccess.open(SAVE_PATH,FileAccess.WRITE)
 	if f:
-		f.store_string(JSON.stringify({"version":4,"prices":prices,"expenses":expenses,"cost_of_sales":cost_of_sales,"lost_sales":lost_sales,"day_number":day_number,"day_clock":day_clock,"placements":placements,"warehouse_level":warehouse_level,"incoming":incoming,"delivery_eta":delivery_eta,"cash":cash,"stock":saved_stock,"storage":saved_storage,"delivery":saved_delivery,"shelf_levels":shelf_levels,"level":level,"sold":sold,"revenue":revenue,"workers":workers,"loaders":loaders,"cleaners":cleaners,"dirt":dirt}))
+		f.store_string(JSON.stringify({"version":5,"supplier":supplier,"muted":muted,"rewards":rewards,"inventory_cost":inventory_cost,"prices":prices,"expenses":expenses,"cost_of_sales":cost_of_sales,"lost_sales":lost_sales,"day_number":day_number,"day_clock":day_clock,"placements":placements,"warehouse_level":warehouse_level,"incoming":incoming,"delivery_eta":delivery_eta,"cash":cash,"stock":saved_stock,"storage":saved_storage,"delivery":saved_delivery,"shelf_levels":shelf_levels,"level":level,"sold":sold,"revenue":revenue,"workers":workers,"loaders":loaders,"cleaners":cleaners,"dirt":dirt}))
 
 func load_game():
 	if not FileAccess.file_exists(SAVE_PATH):
@@ -580,6 +604,9 @@ func load_game():
 	if typeof(data)!=TYPE_DICTIONARY:
 		return
 	cash=int(data.get("cash",500))
+	supplier=clampi(int(data.get("supplier",0)),0,2)
+	muted=bool(data.get("muted",false))
+	rewards=data.get("rewards",[])
 	level=clampi(int(data.get("level",1)),1,10)
 	sold=maxi(0,int(data.get("sold",0)))
 	revenue=maxi(0,int(data.get("revenue",0)))
@@ -605,9 +632,108 @@ func load_game():
 		delivery[i]=maxi(0,int(data.get("delivery",[0,0,0])[i]))
 	for i in range(3):
 		prices[i]=clampi(int(prices[i]),COST[i],PRICE[i]*2)
+	inventory_cost=data.get("inventory_cost",[])
+	if inventory_cost.size()!=3:
+		inventory_cost=[]
+		for i in range(3):
+			inventory_cost.append((stock[i]+storage[i]+delivery[i]+incoming[i])*COST[i])
 	if int(data.get("version",1))<3:
 		var slot=0
 		for i in range(3):
 			for j in range(shelf_levels[i]-1):
 				placements[slot]=i
 				slot+=1
+
+func supplier_cost(i: int) -> int:
+	return maxi(1,COST[i]+[0,-2,3][supplier])
+
+func switch_supplier():
+	supplier=(supplier+1)%3
+	refresh()
+	save_game()
+
+func setup_sound():
+	sound=AudioStreamPlayer.new()
+	add_child(sound)
+	var wav=AudioStreamWAV.new()
+	wav.format=AudioStreamWAV.FORMAT_16_BITS
+	wav.mix_rate=22050
+	var bytes=PackedByteArray()
+	bytes.resize(8820)
+	for i in range(4410):
+		var t=float(i)/22050.0
+		var f=660.0 if t<0.09 else 880.0
+		var envelope=minf(1,t*150)*maxf(0,1-t/0.2)
+		bytes.encode_s16(i*2,roundi(sin(t*TAU*f)*envelope*5500))
+	wav.data=bytes
+	sound.stream=wav
+
+func play_sound():
+	if not muted and sound!=null:
+		sound.play()
+
+func check_rewards():
+	var conditions=[sold>=10,sold>=50,loaders>0,cleaners>0,placements.count(-1)<=3]
+	var bonuses=[50,150,60,40,200]
+	var names=["Первые продажи","Пятьдесят продаж","Первая доставка","Чистый магазин","Расширение бизнеса"]
+	for i in range(conditions.size()):
+		if conditions[i] and not rewards.has(i):
+			rewards.append(i)
+			cash+=bonuses[i]
+			message="Достижение: %s! +%d мон." % [names[i],bonuses[i]]
+			refresh()
+			save_game()
+
+func show_menu():
+	if menu!=null:
+		menu.visible=true
+		return
+	menu=PanelContainer.new()
+	menu.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	menu.add_theme_stylebox_override("panel",style(Color("#10242d"),0))
+	add_child(menu)
+	var center=CenterContainer.new()
+	menu.add_child(center)
+	var column=VBoxContainer.new()
+	column.custom_minimum_size.x=400
+	column.add_theme_constant_override("separation",12)
+	center.add_child(column)
+	var heading=label(column,"MARKET EMPIRE",40)
+	heading.horizontal_alignment=HORIZONTAL_ALIGNMENT_CENTER
+	heading.add_theme_color_override("font_color",Color("#a9e8b0"))
+	var subtitle=label(column,"Построй свою торговую империю",19)
+	subtitle.horizontal_alignment=HORIZONTAL_ALIGNMENT_CENTER
+	button(column,"Продолжить игру",func(): menu.hide())
+	button(column,"Как играть",show_help)
+	var toggle=button(column,"Звук: "+("выкл." if muted else "вкл."),toggle_sound)
+	toggle.name="SoundToggle"
+	button(column,"Новая игра",confirm_reset)
+
+func toggle_sound():
+	muted=not muted
+	var b=menu.find_child("SoundToggle",true,false)
+	if b!=null:
+		b.text="Звук: "+("выкл." if muted else "вкл.")
+	save_game()
+
+func show_help():
+	var d=AcceptDialog.new()
+	d.title="Как играть"
+	d.dialog_text="1. Открой магазин: продавец обслуживает клиентов.\n2. Заказывай товары, дождись поставки и пополни полки.\n3. Найми грузчика для автоматической разгрузки.\n4. Уборщик поддерживает чистоту.\n5. В стройке выбери оборудование и свободное место.\n6. В отчёте меняй цены и следи за расходами."
+	add_child(d)
+	d.confirmed.connect(d.queue_free)
+	d.close_requested.connect(d.queue_free)
+	d.popup_centered(Vector2i(570,300))
+
+func confirm_reset():
+	var d=ConfirmationDialog.new()
+	d.title="Начать заново?"
+	d.dialog_text="Текущий игровой прогресс будет удалён."
+	add_child(d)
+	d.confirmed.connect(func():
+		if FileAccess.file_exists(SAVE_PATH):
+			DirAccess.remove_absolute(ProjectSettings.globalize_path(SAVE_PATH))
+		get_tree().reload_current_scene()
+	)
+	d.canceled.connect(d.queue_free)
+	d.popup_centered()
