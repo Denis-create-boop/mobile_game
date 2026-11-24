@@ -23,6 +23,17 @@ var tabs: TabContainer
 var delivery_eta: float = 0.0
 var incoming: Array = [0,0,0]
 var payment_events: Array = []
+var prices: Array = [22,32,19]
+var expenses: int = 0
+var cost_of_sales: int = 0
+var lost_sales: int = 0
+var day_number: int = 1
+var day_clock: float = 0.0
+var finance_label: Label
+var price_labels: Array[Label] = []
+var goals_label: Label
+var loader_tasks: Array = []
+var cleaner_tasks: Array = []
 var warehouse_level: int = 1
 var dirt: float = 0.0
 var sellers: Array = []
@@ -54,6 +65,10 @@ func _ready():
 	load_game()
 	for i in range(workers):
 		add_seller()
+	for i in range(loaders):
+		add_loader()
+	for i in range(cleaners):
+		add_cleaner()
 	build_ui()
 	refresh()
 
@@ -77,10 +92,10 @@ func label(parent: Node, value: String, size: int = 18) -> Label:
 func button(parent: Node, value: String, action: Callable) -> Button:
 	var b = Button.new()
 	b.text = value
-	b.custom_minimum_size.y = 29
+	b.custom_minimum_size.y = 35
 	b.add_theme_font_size_override("font_size", 13)
-	b.add_theme_stylebox_override("normal", style(Color("#317c69")))
-	b.add_theme_stylebox_override("hover", style(Color("#39876d")))
+	b.add_theme_stylebox_override("normal", style(Color("#356c60")))
+	b.add_theme_stylebox_override("hover", style(Color("#438c77")))
 	b.add_theme_stylebox_override("pressed", style(Color("#1a493e")))
 	b.add_theme_stylebox_override("disabled", style(Color("#283b42")))
 	b.pressed.connect(action)
@@ -117,10 +132,14 @@ func build_ui():
 	world.add_child(visual)
 	visual.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 	var panel = PanelContainer.new()
-	panel.custom_minimum_size.x = 310
-	panel.add_theme_stylebox_override("panel", style(Color("#213c43")))
+	panel.custom_minimum_size.x = 318
+	panel.add_theme_stylebox_override("panel", style(Color("#203038")))
 	row.add_child(panel)
 	tabs = TabContainer.new()
+	tabs.add_theme_font_size_override("font_size", 13)
+	tabs.add_theme_stylebox_override("panel", style(Color("#17262e")))
+	tabs.add_theme_stylebox_override("tab_selected", style(Color("#356c60"),6))
+	tabs.add_theme_stylebox_override("tab_unselected", style(Color("#263a42"),6))
 	panel.add_child(tabs)
 	var side = tab_page("Товары")
 	label(side, "ПОСТАВКИ · ПОЛКА / СКЛАД", 15)
@@ -140,6 +159,20 @@ func build_ui():
 	for i in range(3):
 		staff_buttons.append(button(side, "", hire_role.bind(i)))
 	button(side, "Убрать магазин вручную", manual_clean)
+	side = tab_page("Отчёт")
+	label(side, "ЭКОНОМИКА", 16)
+	finance_label=label(side, "", 13)
+	label(side, "ЦЕНЫ ПРОДАЖИ", 15)
+	for i in range(3):
+		var price_row=HBoxContainer.new()
+		side.add_child(price_row)
+		button(price_row,"−",change_price.bind(i,-1))
+		var price_label=label(price_row,"",13)
+		price_label.size_flags_horizontal=Control.SIZE_EXPAND_FILL
+		price_labels.append(price_label)
+		button(price_row,"+",change_price.bind(i,1))
+	goals_label=label(side,"",13)
+	goals_label.autowrap_mode=TextServer.AUTOWRAP_WORD_SMART
 	var toolbar = HBoxContainer.new()
 	root.add_child(toolbar)
 	open_button = button(toolbar, "", toggle_shop)
@@ -148,7 +181,8 @@ func build_ui():
 	button(toolbar, "+", func(): visual.zoom(0.87))
 	button(toolbar, "Поворот влево", func(): visual.rotate_view(-1))
 	button(toolbar, "Поворот вправо", func(): visual.rotate_view(1))
-	button(toolbar, "Сброс камеры", func(): visual.reset_view())
+	button(toolbar, "Обзор", func(): visual.overview())
+	button(toolbar, "Сброс", func(): visual.reset_view())
 	hint = label(root, "", 16)
 	hint.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	hint.custom_minimum_size.y = 42
@@ -181,6 +215,7 @@ func place_equipment(slot: int):
 		cancel_build()
 		return
 	cash-=cost
+	expenses+=cost
 	placements[slot]=i
 	shelf_levels[i]+=1
 	level+=1
@@ -195,10 +230,24 @@ func expand_warehouse():
 		refresh()
 		return
 	cash-=180
+	expenses+=180
 	warehouse_level+=1
 	message="Склад расширен."
 	refresh()
 	save_game()
+
+func change_price(i: int, direction: int):
+	prices[i]=clampi(int(prices[i])+direction*2,COST[i],PRICE[i]*2)
+	refresh()
+	save_game()
+
+func refresh_finance():
+	if finance_label==null:
+		return
+	finance_label.text="День %d · %d%% смены\nВыручка: %d\nСебестоимость продаж: %d\nОперационные расходы: %d\nПрибыль от продаж: %d\nУшли без покупки: %d" % [day_number,roundi(day_clock/1.2),revenue,cost_of_sales,expenses,revenue-cost_of_sales-expenses,lost_sales]
+	for i in range(3):
+		price_labels[i].text="%s · %d мон." % [GOODS[i],prices[i]]
+	goals_label.text="ЦЕЛИ\n%s  Продать 50 товаров (%d/50)\n%s  Нанять грузчика\n%s  Построить 3 новых полки" % ["✓" if sold>=50 else "○",mini(sold,50),"✓" if loaders>0 else "○","✓" if level>=4 else "○"]
 
 func refresh():
 	hud.text = "Баланс %d мон.   Ур. %d   Продано %d" % [cash, level, sold]
@@ -215,6 +264,7 @@ func refresh():
 	open_button.text = "Закрыть магазин" if running else "Открыть магазин"
 	info.text = "В пути: %d сек. | На разгрузке: %d\nЧистота: %d%% | Склад: %d/товар" % [ceili(delivery_eta),delivery[0]+delivery[1]+delivery[2],roundi(100-dirt),40*warehouse_level]
 	hint.text = message
+	refresh_finance()
 
 func capacity(i: int = 0) -> int:
 	return 12*shelf_levels[i]
@@ -245,19 +295,27 @@ func hire_role(i: int):
 	if count>=3 or cash<role_cost(i):
 		return
 	cash -= role_cost(i)
+	expenses += role_cost(i)
 	match i:
 		0:
 			workers += 1
 			add_seller()
-		1: loaders += 1
-		2: cleaners += 1
+		1:
+			loaders += 1
+			add_loader()
+		2:
+			cleaners += 1
+			add_cleaner()
 	message = ["Продавец нанят","Грузчик нанят","Уборщик нанят"][i]
 	refresh()
 	save_game()
 
 func manual_load():
-	if loader_phase != 0:
-		return
+	for task in loader_tasks:
+		if task["phase"]!=0:
+			message="Грузчики работают. Дождитесь окончания разгрузки."
+			refresh()
+			return
 	for i in range(3):
 		if delivery[i]>0:
 			storage[i] += delivery[i]
@@ -318,8 +376,22 @@ func _process(delta):
 			refresh()
 			save_game()
 	if running:
+		day_clock+=delta
+		if day_clock>=120.0:
+			day_clock-=120.0
+			day_number+=1
+			var wages=12*workers+8*loaders+6*cleaners
+			var rent=15+warehouse_level*5
+			var bill=wages+rent
+			cash-=bill
+			expenses+=bill
+			message="Новая смена. Зарплата и аренда: −%d мон." % bill
+			if cash<0:
+				message+=" Баланс отрицательный: продолжайте продажи."
+			refresh()
+			save_game()
 		elapsed += delta
-		if elapsed>=maxf(3.0,6.0-workers*0.6+dirt*0.04) and customers.size()<6:
+		if running and elapsed>=maxf(3.0,6.0-workers*0.6+dirt*0.04) and customers.size()<6:
 			elapsed = 0
 			customers.append({"pos":Vector3(-4.1,0,3.65),"phase":0,"item":rng.randi_range(0,2),"timer":0.0,"carry":false,"counter":-1})
 	for c in customers:
@@ -335,14 +407,16 @@ func _process(delta):
 	customers = customers.filter(func(c): return c["phase"]!=5)
 	for i in range(sellers.size()):
 		service(sellers[i],i,delta)
-	update_loader(delta)
+	for task in loader_tasks:
+		update_loader_task(task,delta)
+	for task in cleaner_tasks:
+		update_cleaner_task(task,delta)
 	if cleaners>0:
-		cleaner_pos=cleaner_pos.move_toward(cleaner_target,delta*1.6)
-		if cleaner_pos.distance_to(cleaner_target)<0.1:
-			cleaner_target=Vector3(rng.randf_range(-4,2),0,rng.randf_range(-0.8,1.0))
 		dirt=maxf(0,dirt-delta*cleaners*0.65)
 	if running or not customers.is_empty():
 		dirt=minf(100,dirt+delta*0.12)
+	if tabs.current_tab==3:
+		refresh_finance()
 	info.text = "В пути: %d сек. | На разгрузке: %d\nЧистота: %d%% | Склад: %d/товар" % [ceili(delivery_eta),delivery[0]+delivery[1]+delivery[2],roundi(100-dirt),40*warehouse_level]
 
 func service(s: Dictionary, i: int, delta: float):
@@ -369,16 +443,19 @@ func service(s: Dictionary, i: int, delta: float):
 		2:
 			s["timer"]-=delta
 			if s["timer"]<=0:
-				if stock[item]<=0:
-					message="Нет товара: "+GOODS[item]
+				if stock[item]<=0 or (prices[item]>PRICE[item]*1.25 and rng.randf()<float(prices[item]-PRICE[item])/float(PRICE[item])):
+					lost_sales+=1
+					message="Клиент ушёл: нет товара или высокая цена."
 					c["phase"]=4
 					s["phase"]=0
 					refresh()
 				else:
 					s["phase"]=3
+					s["target"]=shelf_pos(item)
 		3:
-			if move_actor(s,shelf_pos(item),delta):
+			if move_actor(s,s["target"],delta):
 				if stock[item]<=0:
+					lost_sales+=1
 					c["phase"]=4
 					s["phase"]=6
 				else:
@@ -396,70 +473,83 @@ func service(s: Dictionary, i: int, delta: float):
 		5:
 			s["timer"]-=delta
 			if s["timer"]<=0:
-				cash+=PRICE[item]
-				revenue+=PRICE[item]
+				cash+=prices[item]
+				revenue+=prices[item]
+				cost_of_sales+=COST[item]
 				sold+=1
-				payment_events.append({"pos":counter(i),"amount":PRICE[item]})
+				payment_events.append({"pos":counter(i),"amount":prices[item]})
 				dirt=minf(100,dirt+2)
 				c["phase"]=4
 				s["phase"]=0
-				message="Оплата: %s +%d мон." % [GOODS[item],PRICE[item]]
+				message="Оплата: %s +%d мон." % [GOODS[item],prices[item]]
 				refresh()
 				save_game()
 		6:
 			if move_actor(s,home,delta):
 				s["phase"]=0
 
-func update_loader(delta: float):
-	if loaders==0:
-		return
-	var dock = Vector3(-4.3,0,-0.2)
-	var warehouse = Vector3(-4.3,0,1.35)
-	var speed = 1.8+loaders*0.6
-	match loader_phase:
+func add_loader():
+	loader_tasks.append({"pos":Vector3(-4.0,0,0.6+loader_tasks.size()*0.4),"phase":0,"item":-1,"amount":0,"target":Vector3.ZERO})
+
+func add_cleaner():
+	var p=Vector3(-3.0+cleaner_tasks.size(),0,1.0)
+	cleaner_tasks.append({"pos":p,"target":p})
+
+func update_cleaner_task(task: Dictionary, delta: float):
+	if move_actor(task,task["target"],delta,1.5):
+		task["target"]=Vector3(rng.randf_range(-3.4,3.5),0,rng.randf_range(-0.8,1.0))
+
+func update_loader_task(task: Dictionary, delta: float):
+	var dock=Vector3(-3.9,0,-0.25)
+	var warehouse=Vector3(-3.9,0,1.35)
+	var item: int=task["item"]
+	match int(task["phase"]):
 		0:
 			for i in range(3):
 				if delivery[i]>0:
-					loader_item=i
-					loader_phase=1
-					break
-			if loader_phase==0:
-				for i in range(3):
-					if storage[i]>0 and stock[i]<capacity(i):
-						loader_item=i
-						loader_phase=3
-						break
+					task["item"]=i
+					task["phase"]=1
+					return
+			for i in range(3):
+				if storage[i]>0 and stock[i]<capacity(i):
+					task["item"]=i
+					task["phase"]=3
+					return
 		1:
-			loader_pos=loader_pos.move_toward(dock,speed*delta)
-			if loader_pos.distance_to(dock)<0.03:
-				loader_amount=mini(5,delivery[loader_item])
-				delivery[loader_item]-=loader_amount
-				loader_phase=2
+			if move_actor(task,dock,delta,2.4):
+				var amount=mini(5,delivery[item])
+				delivery[item]-=amount
+				task["amount"]=amount
+				task["phase"]=2 if amount>0 else 0
 		2:
-			loader_pos=loader_pos.move_toward(warehouse,speed*delta)
-			if loader_pos.distance_to(warehouse)<0.03:
-				storage[loader_item]+=loader_amount
-				loader_amount=0
-				loader_phase=0
+			if move_actor(task,warehouse,delta,2.4):
+				storage[item]+=task["amount"]
+				task["amount"]=0
+				task["phase"]=0
 				refresh()
 				save_game()
 		3:
-			loader_pos=loader_pos.move_toward(warehouse,speed*delta)
-			if loader_pos.distance_to(warehouse)<0.03:
-				loader_amount=mini(5,storage[loader_item])
-				storage[loader_item]-=loader_amount
-				loader_phase=4
+			if move_actor(task,warehouse,delta,2.4):
+				var amount=mini(5,mini(storage[item],capacity(item)-stock[item]))
+				storage[item]-=amount
+				task["amount"]=amount
+				task["target"]=shelf_pos(item)+Vector3(0.35,0,0.25)
+				task["phase"]=4 if amount>0 else 0
 		4:
-			var target=shelf_pos(loader_item)+Vector3(0.4,0,0.2)
-			loader_pos=loader_pos.move_toward(target,speed*delta)
-			if loader_pos.distance_to(target)<0.03:
-				var n=mini(loader_amount,capacity(loader_item)-stock[loader_item])
-				stock[loader_item]+=n
-				storage[loader_item]+=loader_amount-n
-				loader_amount=0
-				loader_phase=0
+			if move_actor(task,task["target"],delta,2.4):
+				var n=mini(task["amount"],capacity(item)-stock[item])
+				stock[item]+=n
+				storage[item]+=task["amount"]-n
+				task["amount"]=0
+				task["phase"]=0
 				refresh()
 				save_game()
+
+func unloading() -> bool:
+	for task in loader_tasks:
+		if task["phase"]==2:
+			return true
+	return false
 
 func save_game():
 	# In-flight goods are restored to their source when a saved game is reopened.
@@ -473,13 +563,15 @@ func save_game():
 				saved_stock[i]+=1
 			else:
 				saved_storage[i]+=1
-	if loader_phase==2:
-		saved_delivery[loader_item]+=loader_amount
-	elif loader_phase==4:
-		saved_storage[loader_item]+=loader_amount
+	for task in loader_tasks:
+		var i: int=task["item"]
+		if task["phase"]==2:
+			saved_delivery[i]+=task["amount"]
+		elif task["phase"]==4:
+			saved_storage[i]+=task["amount"]
 	var f=FileAccess.open(SAVE_PATH,FileAccess.WRITE)
 	if f:
-		f.store_string(JSON.stringify({"version":3,"placements":placements,"warehouse_level":warehouse_level,"incoming":incoming,"delivery_eta":delivery_eta,"cash":cash,"stock":saved_stock,"storage":saved_storage,"delivery":saved_delivery,"shelf_levels":shelf_levels,"level":level,"sold":sold,"revenue":revenue,"workers":workers,"loaders":loaders,"cleaners":cleaners,"dirt":dirt}))
+		f.store_string(JSON.stringify({"version":4,"prices":prices,"expenses":expenses,"cost_of_sales":cost_of_sales,"lost_sales":lost_sales,"day_number":day_number,"day_clock":day_clock,"placements":placements,"warehouse_level":warehouse_level,"incoming":incoming,"delivery_eta":delivery_eta,"cash":cash,"stock":saved_stock,"storage":saved_storage,"delivery":saved_delivery,"shelf_levels":shelf_levels,"level":level,"sold":sold,"revenue":revenue,"workers":workers,"loaders":loaders,"cleaners":cleaners,"dirt":dirt}))
 
 func load_game():
 	if not FileAccess.file_exists(SAVE_PATH):
@@ -487,7 +579,7 @@ func load_game():
 	var data=JSON.parse_string(FileAccess.get_file_as_string(SAVE_PATH))
 	if typeof(data)!=TYPE_DICTIONARY:
 		return
-	cash=maxi(0,int(data.get("cash",500)))
+	cash=int(data.get("cash",500))
 	level=clampi(int(data.get("level",1)),1,10)
 	sold=maxi(0,int(data.get("sold",0)))
 	revenue=maxi(0,int(data.get("revenue",0)))
@@ -499,12 +591,20 @@ func load_game():
 	placements=data.get("placements",[-1,-1,-1,-1,-1,-1])
 	incoming=data.get("incoming",[0,0,0])
 	delivery_eta=maxf(0,float(data.get("delivery_eta",0)))
+	prices=data.get("prices",[22,32,19])
+	expenses=maxi(0,int(data.get("expenses",0)))
+	cost_of_sales=maxi(0,int(data.get("cost_of_sales",0)))
+	lost_sales=maxi(0,int(data.get("lost_sales",0)))
+	day_number=maxi(1,int(data.get("day_number",1)))
+	day_clock=clampf(float(data.get("day_clock",0)),0,119.99)
 	for i in range(3):
 		shelf_levels[i]=clampi(int(data.get("shelf_levels",[1,1,1])[i]),1,3)
 		var old=maxi(0,int(data.get("stock",[8,8,8])[i]))
 		stock[i]=mini(old,capacity(i))
 		storage[i]=maxi(0,int(data.get("storage",[5,5,5])[i]))+old-stock[i]
 		delivery[i]=maxi(0,int(data.get("delivery",[0,0,0])[i]))
+	for i in range(3):
+		prices[i]=clampi(int(prices[i]),COST[i],PRICE[i]*2)
 	if int(data.get("version",1))<3:
 		var slot=0
 		for i in range(3):
