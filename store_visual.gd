@@ -48,7 +48,7 @@ func _ready():
 	viewport = SubViewport.new()
 	viewport.size = Vector2i(640,420)
 	viewport.own_world_3d = true
-	viewport.msaa_3d = Viewport.MSAA_2X
+	viewport.msaa_3d = Viewport.MSAA_4X
 	viewport.render_target_update_mode = SubViewport.UPDATE_ALWAYS
 	add_child(viewport)
 	stage = Node3D.new()
@@ -56,7 +56,7 @@ func _ready():
 	var env = WorldEnvironment.new()
 	var e = Environment.new()
 	e.background_mode = Environment.BG_COLOR
-	e.background_color = Color("#40565c")
+	e.background_color = Color("#718b91")
 	e.ambient_light_source = Environment.AMBIENT_SOURCE_COLOR
 	e.ambient_light_color = Color("#c4d5d4")
 	e.ambient_light_energy = 0.35
@@ -67,7 +67,9 @@ func _ready():
 	light.light_energy = 0.65
 	scene_light=light
 	light.shadow_enabled = true
-	light.directional_shadow_max_distance=45.0
+	light.directional_shadow_max_distance=30.0
+	light.shadow_bias=0.12
+	light.shadow_normal_bias=0.35
 	stage.add_child(light)
 	camera = Camera3D.new()
 	camera.projection = Camera3D.PROJECTION_ORTHOGONAL
@@ -80,25 +82,32 @@ func _ready():
 	build_extension()
 	decorate_store()
 	add_details()
+	add_landscaping()
 	reset_view()
 	status_label = Label.new()
 	status_label.position = Vector2(12,8)
 	status_label.mouse_filter=Control.MOUSE_FILTER_IGNORE
 	status_label.add_theme_font_size_override("font_size",18)
 	status_label.add_theme_color_override("font_color",Color("#fff1d8"))
+	status_label.add_theme_color_override("font_shadow_color",Color("#172b32"))
+	status_label.add_theme_constant_override("shadow_offset_x",1)
+	status_label.add_theme_constant_override("shadow_offset_y",2)
 	add_child(status_label)
 	sales_label = Label.new()
 	sales_label.mouse_filter=Control.MOUSE_FILTER_IGNORE
 	sales_label.set_anchors_and_offsets_preset(Control.PRESET_BOTTOM_LEFT)
 	sales_label.position = Vector2(12, size.y-30)
-	sales_label.add_theme_color_override("font_color",Color("#193d36"))
+	sales_label.add_theme_color_override("font_color",Color("#ffffff"))
+	sales_label.add_theme_color_override("font_shadow_color",Color("#172b32"))
+	sales_label.add_theme_constant_override("shadow_offset_x",1)
+	sales_label.add_theme_constant_override("shadow_offset_y",2)
 	add_child(sales_label)
 
 func reset_view():
 	orbit=0.70
-	camera_zoom=10.8
-	zoom_goal=10.8
-	focus=Vector3(0,0.5,0)
+	camera_zoom=12.2
+	zoom_goal=12.2
+	focus=Vector3(-0.5,0.5,0.3)
 	focus_goal=focus
 	update_camera()
 
@@ -220,10 +229,7 @@ func build_store():
 	var mint = Color("#398675")
 	var cream = Color("#cdbda2")
 	box(stage,Vector3(0,-0.32,0),Vector3(10.4,0.5,8.4),Color("#688e82"))
-	for x in range(10):
-		for z in range(8):
-			var shade = Color("#b6a78b") if (x+z)%2==0 else Color("#c8bba0")
-			box(stage,Vector3(x-4.5,-0.04,z-3.5),Vector3(0.98,0.08,0.98),shade)
+	make_floor(stage,Vector3(0,-0.05,0),Vector2(10,8),Color("#c3ae91"))
 	box(stage,Vector3(0,0.95,-4.0),Vector3(10.3,1.9,0.18),cream)
 	box(stage,Vector3(-5,0.95,0),Vector3(0.18,1.9,8),cream)
 	box(stage,Vector3(0,1.98,-4.0),Vector3(10.45,0.17,0.29),mint)
@@ -360,18 +366,13 @@ func build_extension():
 	var wood=Color("#b88c62")
 	# Additional retail wing with accessible construction pads.
 	box(stage,Vector3(8.6,-0.29,0),Vector3(8.2,0.48,8.4),Color("#688e82"))
-	for x in range(8):
-		for z in range(8):
-			var color=Color("#b6a78b") if (x+z)%2==0 else Color("#c8bba0")
-			box(stage,Vector3(5.1+x,-0.04,z-3.5),Vector3(0.98,0.08,0.98),color)
+	make_floor(stage,Vector3(8.6,-0.05,0),Vector2(8.2,8),Color("#c3ae91"))
 	box(stage,Vector3(8.6,0.85,-4),Vector3(8.3,1.7,0.18),cream)
 	box(stage,Vector3(8.6,1.77,-4),Vector3(8.3,0.12,0.26),mint)
 	annex=Node3D.new()
 	stage.add_child(annex)
 	box(annex,Vector3(8.6,-0.29,5.8),Vector3(8.2,0.48,4.4),Color("#688e82"))
-	for x in range(8):
-		for z in range(4):
-			box(annex,Vector3(5.1+x,-0.04,4.0+z),Vector3(0.98,0.08,0.98),Color("#b6a78b") if (x+z)%2==0 else Color("#c8bba0"))
+	make_floor(annex,Vector3(8.6,-0.05,5.8),Vector2(8.2,4.4),Color("#c3ae91"))
 	for i in range(12):
 		var center: Vector3=game.build_slot(i)
 		var pad=box(stage,center+Vector3(0,0.015,0),Vector3(2.4,0.035,1.65),Color("#91bdab"))
@@ -622,6 +623,52 @@ func add_details():
 
 func toggle_quality():
 	quality_high=not quality_high
-	viewport.msaa_3d=Viewport.MSAA_2X if quality_high else Viewport.MSAA_DISABLED
+	viewport.msaa_3d=Viewport.MSAA_4X if quality_high else Viewport.MSAA_DISABLED
 	scene_light.shadow_enabled=quality_high
 	stretch_shrink=1 if quality_high else 2
+
+# A single textured floor surface replaces hundreds of individual tile meshes.
+func make_floor(parent: Node3D, pos: Vector3, dimensions: Vector2, base: Color):
+	var plane=PlaneMesh.new()
+	plane.size=dimensions
+	var tile=mesh(parent,plane,pos+Vector3(0,0.055,0),base)
+	var shader=Shader.new()
+	shader.code="""shader_type spatial;
+render_mode diffuse_burley;
+uniform vec3 tint : source_color;
+varying vec3 world_position;
+void vertex(){world_position=(MODEL_MATRIX*vec4(VERTEX,1.0)).xyz;}
+void fragment(){
+ vec2 coord=world_position.xz;
+ vec2 cell=floor(coord);
+ vec2 uv=fract(coord);
+ float edge=min(min(uv.x,1.0-uv.x),min(uv.y,1.0-uv.y));
+ float grout=smoothstep(0.012,0.028,edge);
+ float variation=fract(sin(dot(cell,vec2(12.9898,78.233)))*43758.5453);
+ float grain=sin(coord.x*155.0+sin(coord.y*52.0))*0.012;
+ vec3 tile_color=tint*(0.92+variation*0.10+grain);
+ ALBEDO=mix(tint*0.60,tile_color,grout);
+ ROUGHNESS=0.86;
+}"""
+	var material=ShaderMaterial.new()
+	material.shader=shader
+	material.set_shader_parameter("tint",base)
+	tile.material_override=material
+
+func add_landscaping():
+	var asphalt=Color("#526366")
+	var grass=Color("#658b68")
+	var concrete=Color("#b7b2a2")
+	box(stage,Vector3(2,-0.56,1),Vector3(24,0.2,17),grass)
+	box(stage,Vector3(2,-0.43,6.5),Vector3(23.5,0.13,4.7),asphalt)
+	box(stage,Vector3(2,-0.33,4.45),Vector3(23.5,0.18,0.65),concrete)
+	for i in range(12):
+		box(stage,Vector3(-8+i*1.8,-0.35,7.2),Vector3(0.9,0.025,0.07),Color("#e4d9aa"))
+	for pos in [Vector3(-8.5,-0.3,-4.7),Vector3(3.9,-0.3,-5.1),Vector3(12.8,-0.3,-4.8)]:
+		cylinder(stage,pos+Vector3(0,0.8,0),0.13,1.6,Color("#805d43"))
+		ball(stage,pos+Vector3(0,1.9,0),Vector3(1.5,1.75,1.5),grass.darkened(0.12))
+		ball(stage,pos+Vector3(0.36,1.6,0.13),Vector3(0.9,1.0,1.0),grass.lightened(0.12))
+	# Warm metal bins and a little storefront bench.
+	box(stage,Vector3(-0.8,0.28,4.12),Vector3(1.7,0.13,0.42),Color("#a8794b"))
+	for x in [-1.5,-0.1]:
+		box(stage,Vector3(x,0.03,4.12),Vector3(0.1,0.45,0.35),Color("#39494c"))

@@ -68,6 +68,11 @@ var message: String = "Откройте магазин и обслужите п�
 var hud: Label
 var hint: Label
 var shop_rows: Array[Button] = []
+var show_locked: bool = false
+var filter_button: Button
+var stock_status: Label
+var music: AudioStreamPlayer
+var music_enabled: bool = true
 var upgrade: Button
 var hire: Button
 var open_button: Button
@@ -87,6 +92,7 @@ func _ready():
 		add_cleaner()
 	build_ui()
 	setup_sound()
+	setup_music()
 	refresh()
 	show_menu()
 
@@ -162,10 +168,11 @@ func build_ui():
 	var side = tab_page("Товары")
 	label(side, "ПОСТАВКИ · ПОЛКА / СКЛАД", 15)
 	supplier_button=button(side,"",switch_supplier)
-	for i in range(GOODS.size()):
-		shop_rows.append(button(side, "", buy.bind(i)))
 	info = label(side, "", 13)
 	button(side, "Разгрузить / пополнить вручную", manual_load)
+	filter_button=button(side,"",toggle_catalog)
+	for i in range(GOODS.size()):
+		shop_rows.append(button(side, "", buy.bind(i)))
 	side = tab_page("Стройка")
 	label(side, "РАЗМЕЩЕНИЕ ОБОРУДОВАНИЯ", 14)
 	label(side, "Выберите товар, затем место в зале.", 12)
@@ -201,8 +208,8 @@ func build_ui():
 	button(toolbar, "Сохранить", save_game)
 	button(toolbar, "−", func(): visual.zoom(1.15))
 	button(toolbar, "+", func(): visual.zoom(0.87))
-	button(toolbar, "Поворот влево", func(): visual.rotate_view(-1))
-	button(toolbar, "Поворот вправо", func(): visual.rotate_view(1))
+	button(toolbar, "↶", func(): visual.rotate_view(-1))
+	button(toolbar, "↷", func(): visual.rotate_view(1))
 	button(toolbar, "Обзор", func(): visual.overview())
 	button(toolbar, "Сброс", func(): visual.reset_view())
 	hint = label(root, "", 16)
@@ -273,7 +280,9 @@ func refresh_finance():
 
 func refresh():
 	hud.text = "Баланс %d мон.   Ур. %d   Продано %d" % [cash, level, sold]
+	filter_button.text="Показать все товары" if not show_locked else "Только открытые товары"
 	for i in range(GOODS.size()):
+		shop_rows[i].visible=show_locked or shelf_levels[i]>0
 		shop_rows[i].text = "%s %d/%d | склад %d | +5 за %d" % [GOODS[i],stock[i],capacity(i),storage[i],supplier_cost(i)*5]
 		shop_rows[i].disabled = shelf_levels[i]==0 or cash < supplier_cost(i)*5 or storage[i]+delivery[i]+incoming[i]+5 > 40*warehouse_level
 		shelf_buttons[i].text = "%s: %d полок · %d мон." % [GOODS[i],shelf_levels[i],equipment_cost(i)]
@@ -317,7 +326,11 @@ func buy(i: int):
 	save_game()
 
 func expand_shelf(i: int):
-	if shelf_levels[i]>=3 or cash<equipment_cost(i):
+	if shelf_levels[i]>=3 or cash<equipment_cost(i) or not unlocked(i):
+		return
+	if not placements.slice(0,active_slots()).has(-1):
+		message="Нет свободных площадок. Расширьте зал."
+		refresh()
 		return
 	build_kind=i
 	message="Выберите свободную площадку справа от магазина."
@@ -627,7 +640,7 @@ func save_game():
 			saved_storage[i]+=task["amount"]
 	var f=FileAccess.open(SAVE_PATH,FileAccess.WRITE)
 	if f:
-		f.store_string(JSON.stringify({"version":6,"area_level":area_level,"reputation":reputation,"promo_left":promo_left,"delivery_duration":delivery_duration,"supplier":supplier,"muted":muted,"rewards":rewards,"inventory_cost":inventory_cost,"prices":prices,"expenses":expenses,"cost_of_sales":cost_of_sales,"lost_sales":lost_sales,"day_number":day_number,"day_clock":day_clock,"placements":placements,"warehouse_level":warehouse_level,"incoming":incoming,"delivery_eta":delivery_eta,"cash":cash,"stock":saved_stock,"storage":saved_storage,"delivery":saved_delivery,"shelf_levels":shelf_levels,"level":level,"sold":sold,"revenue":revenue,"workers":workers,"loaders":loaders,"cleaners":cleaners,"dirt":dirt}))
+		f.store_string(JSON.stringify({"version":7,"music_enabled":music_enabled,"area_level":area_level,"reputation":reputation,"promo_left":promo_left,"delivery_duration":delivery_duration,"supplier":supplier,"muted":muted,"rewards":rewards,"inventory_cost":inventory_cost,"prices":prices,"expenses":expenses,"cost_of_sales":cost_of_sales,"lost_sales":lost_sales,"day_number":day_number,"day_clock":day_clock,"placements":placements,"warehouse_level":warehouse_level,"incoming":incoming,"delivery_eta":delivery_eta,"cash":cash,"stock":saved_stock,"storage":saved_storage,"delivery":saved_delivery,"shelf_levels":shelf_levels,"level":level,"sold":sold,"revenue":revenue,"workers":workers,"loaders":loaders,"cleaners":cleaners,"dirt":dirt}))
 
 func load_game():
 	if not FileAccess.file_exists(SAVE_PATH):
@@ -638,6 +651,7 @@ func load_game():
 	cash=int(data.get("cash",500))
 	supplier=clampi(int(data.get("supplier",0)),0,2)
 	muted=bool(data.get("muted",false))
+	music_enabled=bool(data.get("music_enabled",true))
 	rewards=data.get("rewards",[])
 	level=maxi(1,int(data.get("level",1)))
 	area_level=clampi(int(data.get("area_level",1)),1,2)
@@ -744,6 +758,8 @@ func show_menu():
 	button(column,"Продолжить игру",func(): menu.hide())
 	button(column,"Как играть",show_help)
 	button(column,"Графика: сменить качество",func(): visual.toggle_quality())
+	var mb=button(column,"Музыка: "+("вкл." if music_enabled else "выкл."),toggle_music)
+	mb.name="MusicToggle"
 	var toggle=button(column,"Звук: "+("выкл." if muted else "вкл."),toggle_sound)
 	toggle.name="SoundToggle"
 	button(column,"Новая игра",confirm_reset)
@@ -860,3 +876,51 @@ func move_staff(actor: Dictionary, target: Vector3, delta: float, speed: float=2
 	if move_actor(actor,path[0],delta,speed):
 		path.pop_front()
 	return path.is_empty()
+
+func toggle_catalog():
+	show_locked=not show_locked
+	refresh()
+
+func toggle_music():
+	music_enabled=not music_enabled
+	if music_enabled:
+		music.play()
+	else:
+		music.stop()
+	var b=menu.find_child("MusicToggle",true,false)
+	if b!=null:
+		b.text="Музыка: "+("вкл." if music_enabled else "выкл.")
+	save_game()
+
+# Original synthesized ambient accompaniment. No third-party recordings.
+func setup_music():
+	music=AudioStreamPlayer.new()
+	music.volume_db=-19
+	add_child(music)
+	var wav=AudioStreamWAV.new()
+	wav.format=AudioStreamWAV.FORMAT_16_BITS
+	wav.mix_rate=22050
+	var seconds=16
+	var samples=seconds*22050
+	var bytes=PackedByteArray()
+	bytes.resize(samples*2)
+	var chords=[[48,55,60,64],[45,52,57,60],[41,48,53,57],[43,50,55,59]]
+	for i in range(samples):
+		var t=float(i)/22050.0
+		var chord=chords[mini(3,floori(t/4.0))]
+		var local=fmod(t,4.0)
+		var env=minf(1.0,local*3.0)*minf(1.0,(4.0-local)*3.0)
+		var tone=0.0
+		for note in chord:
+			var hz=440.0*pow(2.0,(float(note)-69.0)/12.0)
+			tone+=sin(TAU*hz*t)*0.17+sin(TAU*hz*2.0*t)*0.025
+		var beat=fmod(t,0.5)
+		var pitch=float(chord[floori(local*2.0)%4])+12.0
+		var melody=sin(TAU*440.0*pow(2.0,(pitch-69.0)/12.0)*t)*exp(-beat*7.0)*minf(1.0,beat*100.0)*0.13
+		bytes.encode_s16(i*2,roundi((tone*env+melody)*10000))
+	wav.data=bytes
+	wav.loop_mode=AudioStreamWAV.LOOP_FORWARD
+	wav.loop_end=samples
+	music.stream=wav
+	if music_enabled:
+		music.play()
