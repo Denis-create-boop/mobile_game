@@ -129,7 +129,8 @@ func _ready():
 		refresh()
 		save_game()
 	else:
-		show_menu()
+		if not (OS.has_feature("web") and JavaScriptBridge.eval("location.search.includes('visual_test=1')")==true):
+			show_menu()
 
 func style(bg: Color, radius: int = 12) -> StyleBoxFlat:
 	var s = StyleBoxFlat.new()
@@ -890,7 +891,7 @@ func show_menu():
 		if child is Button:
 			child.custom_minimum_size.y=52
 			child.add_theme_font_size_override("font_size",20)
-	var version_label=label(column,"V24",14)
+	var version_label=label(column,"V25",14)
 	version_label.horizontal_alignment=HORIZONTAL_ALIGNMENT_CENTER
 
 func toggle_sound():
