@@ -69,13 +69,20 @@ jobs:
       - name: Build Blender art prototype
         run: |
           sudo apt-get update -qq
-          sudo apt-get install -y blender
+          sudo apt-get install -y blender python3-numpy
+          blender -b --python-exit-code 1 --python-expr 'import numpy; print(numpy.__version__)'
           release="build/web/release-${GITHUB_SHA:0:12}"
           mkdir -p "$release/art"
           blender -b -t 4 --python-exit-code 1 --python scripts/blender_store.py -- "$release/art"
           cp art/preview.html "$release/art/index.html"
           test -s "$release/art/preview.png"
           test -s "$release/art/store_small_shop.glb"
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: blender-art-preview
+          path: build/web/release-*/art/
+          if-no-files-found: warn
       - name: Configure Pages
         uses: actions/configure-pages@v5
       - name: Prepare Pages artifact

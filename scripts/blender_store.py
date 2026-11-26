@@ -134,5 +134,5 @@ bpy.ops.object.camera_add(location=(0,-9,18)); cam=bpy.context.object; cam.rotat
 scene=bpy.context.scene; scene.render.engine="CYCLES"; scene.cycles.samples=24; scene.cycles.use_denoising=True; scene.render.resolution_x=1440; scene.render.resolution_y=1000; scene.render.resolution_percentage=100
 # Source scene and real 3D export; procedural textures are preserved in .blend, base PBR parameters in GLB.
 bpy.ops.wm.save_as_mainfile(filepath=str(out/"store_small_shop.blend"))
-bpy.ops.export_scene.gltf(filepath=str(out/"store_small_shop.glb"),export_format="GLB",export_lights=True)
 scene.render.filepath=str(out/"preview.png"); bpy.ops.render.render(write_still=True)
+bpy.ops.export_scene.gltf(filepath=str(out/"store_small_shop.glb"),export_format="GLB",export_lights=True)
