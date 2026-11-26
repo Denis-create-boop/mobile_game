@@ -619,7 +619,7 @@ func _process(delta):
 		actor(people[i],c["pos"],c["carry"],delta)
 		var tag: Label3D=people[i].get_meta("order")
 		tag.text=game.GOODS[c["item"]] if c["phase"]<4 and not c["carry"] else ("Оплата" if c["carry"] and c["phase"]<4 else "")
-	status_label.text="МАГАЗИН ОТКРЫТ" if game.running else "МАГАЗИН ЗАКРЫТ"
+	status_label.text=("МАГАЗИН ОТКРЫТ" if game.running else "МАГАЗИН ЗАКРЫТ")+" | V10 • 3D: %d / резерв: %d" % [asset_library.loaded_count,asset_library.fallback_count]
 	sales_label.position=Vector2(12,size.y-28)
 	sales_label.text="Выручка: %d мон. | Клиентов: %d" % [game.revenue,game.customers.size()]
 
