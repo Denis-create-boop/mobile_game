@@ -87,6 +87,7 @@ func _ready():
 	add_landscaping()
 	add_merchandising()
 	reset_view()
+	print("Market assets loaded: ",asset_library.catalog.get("market",{}).size())
 	status_label = Label.new()
 	status_label.position = Vector2(12,8)
 	status_label.mouse_filter=Control.MOUSE_FILTER_IGNORE
@@ -247,13 +248,15 @@ func build_store():
 		var shelf = Node3D.new()
 		stage.add_child(shelf)
 		shelf.position = Vector3(x,0,-2.1)
-		box(shelf,Vector3(0,0.9,-0.38),Vector3(2.4,1.8,0.12),wood)
-		for y in [0.22,0.83,1.44]:
-			box(shelf,Vector3(0,y,0),Vector3(2.5,0.11,0.95),cream)
-			box(shelf,Vector3(0,y,0.48),Vector3(2.5,0.12,0.055),mint)
-		for edge in [-1.19,1.19]:
-			box(shelf,Vector3(edge,0.9,0),Vector3(0.10,1.8,0.94),wood)
-		box(shelf,Vector3(0,1.87,0),Vector3(2.5,0.28,0.95),mint)
+		var fixture=asset_library.spawn("market",["shelfboxes" if i!=1 else "freezersstanding"],shelf,Vector3.ZERO,Vector3(2.5,1.82,0.95))
+		if fixture==null:
+			box(shelf,Vector3(0,0.9,-0.38),Vector3(2.4,1.8,0.12),wood)
+			for y in [0.22,0.83,1.44]:
+				box(shelf,Vector3(0,y,0),Vector3(2.5,0.11,0.95),cream)
+				box(shelf,Vector3(0,y,0.48),Vector3(2.5,0.12,0.055),mint)
+			for edge in [-1.19,1.19]:
+				box(shelf,Vector3(edge,0.9,0),Vector3(0.10,1.8,0.94),wood)
+			box(shelf,Vector3(0,1.87,0),Vector3(2.5,0.28,0.95),mint)
 		sign_text(shelf,Vector3(0,1.88,0.49),game.GOODS[i],Color.WHITE,0.0045)
 		var row: Array = []
 		for j in range(12):
@@ -416,13 +419,17 @@ func install_rack(slot: int, kind: int):
 	var color=Color("#63a9c4") if kind in [1,3,8,11] else Color("#398675")
 	var cream=Color("#f1e8d4")
 	var height=1.15 if kind in [2,7] else 1.8
-	box(rack,Vector3(0,height/2,-0.36),Vector3(2.25,height,0.12),color)
-	for x in [-1.09,1.09]:
-		box(rack,Vector3(x,height/2,0),Vector3(0.1,height,0.9),color)
+	var fixture_names=["displayfruit"] if kind in [2,7] else (["freezersstanding"] if kind in [1,3,8,11] else ["shelfboxes"])
+	var fixture=asset_library.spawn("market",fixture_names,rack,Vector3.ZERO,Vector3(2.25,height,0.9))
+	if fixture==null:
+		box(rack,Vector3(0,height/2,-0.36),Vector3(2.25,height,0.12),color)
+		for x in [-1.09,1.09]:
+			box(rack,Vector3(x,height/2,0),Vector3(0.1,height,0.9),color)
 	var items: Array=[]
 	for y in [0.22,0.75,1.28]:
 		var yy: float=y*0.62 if kind in [2,7] else y
-		box(rack,Vector3(0,yy,0),Vector3(2.25,0.09,0.9),cream)
+		if fixture==null:
+			box(rack,Vector3(0,yy,0),Vector3(2.25,0.09,0.9),cream)
 		for j in range(4):
 			var p=Vector3(-0.79+j*0.52,yy+0.18,0.04)
 			var item: Node3D=asset_library.food(kind,rack,p-Vector3(0,0.16,0))
@@ -720,6 +727,6 @@ func add_merchandising():
 	var display=Node3D.new()
 	stage.add_child(display)
 	display.position=Vector3(-4.38,0,-3.22)
-	if asset_library.spawn("market",["basket","shoppingbasket"],display,Vector3.ZERO,Vector3(0.62,0.55,0.62))==null:
+	if asset_library.spawn("market",["shoppingbasket"],display,Vector3.ZERO,Vector3(0.62,0.55,0.62))==null:
 		box(display,Vector3(0,0.17,0),Vector3(0.58,0.34,0.48),teal)
 		box(display,Vector3(0,0.36,0),Vector3(0.60,0.05,0.50),accent)
