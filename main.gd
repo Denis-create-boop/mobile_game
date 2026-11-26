@@ -36,6 +36,9 @@ var road_level: int = 1
 var signal_green: int = 12
 var street_queue: Array = []
 var street_lost: int = 0
+var indoor_lost: int = 0
+var visitors_total: int = 0
+var parking_visitors: int = 0
 var street_label: Label
 var road_button: Button
 var bridge_button: Button
@@ -333,9 +336,10 @@ func refresh_finance():
 	if finance_label==null:
 		return
 	finance_label.text="Репутация: %d%%\nАссортимент: %d/%d\nДень %d · %d%% смены\nВыручка: %d\nСебестоимость продаж: %d\nОперационные расходы: %d\nПрибыль от продаж: %d\nУшли без покупки: %d" % [roundi(reputation),active_products().size(),GOODS.size(),day_number,roundi(day_clock/1.2),revenue,cost_of_sales,expenses,revenue-cost_of_sales-expenses,lost_sales]
+	finance_label.text+="\nПосетители: %d\nУшли из очереди: %d\nПрибыли с парковки: %d" % [visitors_total,indoor_lost,parking_visitors]
 	for i in range(GOODS.size()):
 		price_labels[i].text="%s · %d мон." % [GOODS[i],prices[i]]
-	goals_label.text="Достижения: %d/5\n" % rewards.size()+"ЦЕЛИ\n%s  Продать 50 товаров (%d/50)\n%s  Нанять грузчика\n%s  Построить 3 новых полки" % ["✓" if sold>=50 else "○",mini(sold,50),"✓" if loaders>0 else "○","✓" if level>=4 else "○"]
+	goals_label.text="Достижения: %d/5\n" % rewards.size()+"ЦЕЛИ\n%s  Продать 50 товаров (%d/50)\n%s  Нанять грузчика\n%s  Построить 3 новых полки" % ["✓" if sold>=50 else "○",mini(sold,50),"✓" if loaders>0 else "○","✓" if placements.size()-placements.count(-1)>=3 else "○"]
 
 func refresh():
 	hud.text = "%s · %d м² · Ур. %d · %d мон." % [business_name(),floor_area(),level,cash]
@@ -524,7 +528,7 @@ func _process(delta):
 			day_clock-=120.0
 			day_number+=1
 			var wages=12*workers+8*loaders+6*cleaners
-			var rent=15+warehouse_level*5
+			var rent=15+warehouse_level*5+floori(float(floor_area())/20.0)*3
 			var bill=wages+rent
 			cash-=bill
 			expenses+=bill
@@ -536,12 +540,24 @@ func _process(delta):
 		elapsed += delta
 		if running and elapsed>=maxf(1.8,6.0-workers*0.6+dirt*0.04-reputation*0.018-(1.4 if promo_left>0 else 0.0)-(0.65 if parking_owned else 0.0)) and street_queue.size()<18:
 			elapsed = 0
-			street_queue.append({"wait":0.0,"patience":rng.randf_range(9.0,26.0),"pos":Vector3(-3.4,0,27.0)})
+			if parking_owned and rng.randf()<0.32 and customers.size()<customer_limit():
+				parking_visitors+=1
+				admit_customer(Vector3(-9,0,11))
+			else:
+				street_queue.append({"wait":0.0,"patience":rng.randf_range(12.0,32.0),"pos":Vector3(-3.4,0,27.0),"crossing":false})
 	update_street(delta)
+	var queue_index: int=0
 	for c in customers:
 		if c["phase"]==0:
-			var q = customers.find(c)
-			move_actor(c,Vector3(-3.8+minf(q,4)*0.85,0,3.4),delta)
+			c["queue_wait"]=float(c.get("queue_wait",0.0))+delta
+			if c["queue_wait"]>float(c.get("queue_patience",35.0)):
+				c["phase"]=4
+				indoor_lost+=1
+				lost_sales+=1
+				reputation=maxf(0,reputation-0.8)
+			else:
+				move_actor(c,Vector3(-3.8+float(queue_index%5)*0.85,0,3.4+float(floori(queue_index/5.0))*0.62),delta)
+				queue_index+=1
 		elif c["phase"]==1:
 			if move_actor(c,counter(c["counter"])+Vector3(0,0,0.95),delta):
 				c["phase"]=2
@@ -730,7 +746,7 @@ func save_game():
 			saved_storage[i]+=task["amount"]
 	var f=FileAccess.open(SAVE_PATH,FileAccess.WRITE)
 	if f:
-		f.store_string(JSON.stringify({"version":9,"district_units":district_units,"land_steps":land_steps,"experience":experience,"road_level":road_level,"crossing_mode":crossing_mode,"signal_green":signal_green,"street_lost":street_lost,"music_enabled":music_enabled,"area_level":area_level,"parking_owned":parking_owned,"reputation":reputation,"promo_left":promo_left,"delivery_duration":delivery_duration,"supplier":supplier,"muted":muted,"rewards":rewards,"inventory_cost":inventory_cost,"prices":prices,"expenses":expenses,"cost_of_sales":cost_of_sales,"lost_sales":lost_sales,"day_number":day_number,"day_clock":day_clock,"placements":placements,"warehouse_level":warehouse_level,"incoming":incoming,"delivery_eta":delivery_eta,"cash":cash,"stock":saved_stock,"storage":saved_storage,"delivery":saved_delivery,"shelf_levels":shelf_levels,"level":level,"sold":sold,"revenue":revenue,"workers":workers,"loaders":loaders,"cleaners":cleaners,"dirt":dirt}))
+		f.store_string(JSON.stringify({"version":10,"indoor_lost":indoor_lost,"visitors_total":visitors_total,"parking_visitors":parking_visitors,"district_units":district_units,"land_steps":land_steps,"experience":experience,"road_level":road_level,"crossing_mode":crossing_mode,"signal_green":signal_green,"street_lost":street_lost,"music_enabled":music_enabled,"area_level":area_level,"parking_owned":parking_owned,"reputation":reputation,"promo_left":promo_left,"delivery_duration":delivery_duration,"supplier":supplier,"muted":muted,"rewards":rewards,"inventory_cost":inventory_cost,"prices":prices,"expenses":expenses,"cost_of_sales":cost_of_sales,"lost_sales":lost_sales,"day_number":day_number,"day_clock":day_clock,"placements":placements,"warehouse_level":warehouse_level,"incoming":incoming,"delivery_eta":delivery_eta,"cash":cash,"stock":saved_stock,"storage":saved_storage,"delivery":saved_delivery,"shelf_levels":shelf_levels,"level":level,"sold":sold,"revenue":revenue,"workers":workers,"loaders":loaders,"cleaners":cleaners,"dirt":dirt}))
 
 func load_game():
 	if not FileAccess.file_exists(SAVE_PATH):
@@ -755,6 +771,9 @@ func load_game():
 	crossing_mode=clampi(int(data.get("crossing_mode",0)),0,2)
 	signal_green=clampi(int(data.get("signal_green",12)),6,18)
 	street_lost=maxi(0,int(data.get("street_lost",0)))
+	indoor_lost=maxi(0,int(data.get("indoor_lost",0)))
+	visitors_total=maxi(0,int(data.get("visitors_total",0)))
+	parking_visitors=maxi(0,int(data.get("parking_visitors",0)))
 	reputation=clampf(float(data.get("reputation",60)),0,100)
 	promo_left=clampf(float(data.get("promo_left",0)),0,45)
 	delivery_duration=maxf(1,float(data.get("delivery_duration",6)))
@@ -825,7 +844,7 @@ func play_sound():
 		sound.play()
 
 func check_rewards():
-	var conditions=[sold>=10,sold>=50,loaders>0,cleaners>0,placements.count(-1)<=3]
+	var conditions=[sold>=10,sold>=50,loaders>0,cleaners>0,placements.size()-placements.count(-1)>=3]
 	var bonuses=[50,150,60,40,200]
 	var names=["Первые продажи","Пятьдесят продаж","Первая доставка","Чистый магазин","Расширение бизнеса"]
 	for i in range(conditions.size()):
@@ -871,7 +890,7 @@ func show_menu():
 		if child is Button:
 			child.custom_minimum_size.y=52
 			child.add_theme_font_size_override("font_size",20)
-	var version_label=label(column,"V22",14)
+	var version_label=label(column,"V23",14)
 	version_label.horizontal_alignment=HORIZONTAL_ALIGNMENT_CENTER
 
 func toggle_sound():
@@ -1124,24 +1143,56 @@ func refresh_street():
 	if street_label!=null:
 		street_label.text="Ожидают перехода: %d | Ушли: %d | Полос: %d" % [street_queue.size(),street_lost,road_level*2]
 
+func customer_limit() -> int:
+	return mini(18,4+workers*2+floori(float(floor_area())/25.0))
+
+func admit_customer(position: Vector3):
+	visitors_total+=1
+	customers.append({"pos":position,"phase":0,"item":choose_product(),"timer":0.0,"carry":false,"counter":-1,"queue_wait":0.0,"queue_patience":rng.randf_range(25.0,48.0)})
+
 func update_street(delta: float):
-	for i in range(street_queue.size()-1,-1,-1):
-		var p: Dictionary=street_queue[i]
-		p["wait"]+=delta
-		if p["wait"]>p["patience"]:
-			street_queue.remove_at(i)
-			street_lost+=1
+	var waiting_index: int=0
+	var remove_indices: Array[int]=[]
+	var far_z: float=19.5+road_level*2.7+0.85
+	var near_z: float=19.5-road_level*2.7-0.85
 	for i in range(street_queue.size()):
 		var p: Dictionary=street_queue[i]
-		p["pos"]=Vector3(-3.4+(i%4-1.5)*0.63,0,25.9+floori(i/4.0)*0.7+float(road_level-1)*2.6)
-	if running and not street_queue.is_empty() and customers.size()<6 and visual.crossing_open():
-		var p: Dictionary=street_queue[0]
-		var duration: float=1.0 if crossing_mode!=0 else 2.0+road_level*0.7
-		p["cross_time"]=float(p.get("cross_time",0.0))+delta
-		if p["cross_time"]>=duration:
-			street_queue.pop_front()
-			customers.append({"pos":Vector3(-4.1,0,5.1),"phase":0,"item":choose_product(),"timer":0.0,"carry":false,"counter":-1})
+		if bool(p.get("crossing",false)):
+			var target=Vector3(-3.4,0,near_z)
+			if move_actor(p,target,delta,3.3):
+				p["crossing"]=false
+				p["arrived"]=true
+			if bool(p.get("arrived",false)):
+				if customers.size()<customer_limit():
+					admit_customer(p["pos"])
+					remove_indices.append(i)
+			continue
+		if bool(p.get("arrived",false)):
+			if customers.size()<customer_limit():
+				admit_customer(p["pos"])
+				remove_indices.append(i)
+			continue
+		p["wait"]+=delta
+		if not running or p["wait"]>p["patience"]:
+			remove_indices.append(i)
+			if running:
+				street_lost+=1
+			continue
+		var queue_pos=Vector3(-3.4+float(waiting_index%3-1)*0.58,0,far_z+float(floori(waiting_index/3.0))*0.58)
+		p["pos"]=queue_pos
+		waiting_index+=1
+		if visual.crossing_open() and customers.size()+crossing_count()<customer_limit() and waiting_index<=2:
+			p["crossing"]=true
+	for i in range(remove_indices.size()-1,-1,-1):
+		street_queue.remove_at(remove_indices[i])
 	refresh_street()
+
+func crossing_count() -> int:
+	var count: int=0
+	for p in street_queue:
+		if bool(p.get("crossing",false)) or bool(p.get("arrived",false)):
+			count+=1
+	return count
 
 func district_cost(i: int) -> int:
 	return [1800,2600,3200][i]

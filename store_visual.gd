@@ -681,7 +681,7 @@ func _process(delta):
 		actor(people[i],c["pos"],c["carry"],delta)
 		var tag: Label3D=people[i].get_meta("order")
 		tag.text=game.GOODS[c["item"]] if c["phase"]<4 and not c["carry"] else ("Оплата" if c["carry"] and c["phase"]<4 else "")
-	status_label.text=("МАГАЗИН ОТКРЫТ" if game.running else "МАГАЗИН ЗАКРЫТ")+" | V22 • 3D: %d / резерв: %d" % [asset_library.loaded_count,asset_library.fallback_count]
+	status_label.text=("МАГАЗИН ОТКРЫТ" if game.running else "МАГАЗИН ЗАКРЫТ")+" | V23 • 3D: %d / резерв: %d" % [asset_library.loaded_count,asset_library.fallback_count]
 	sales_label.position=Vector2(12,size.y-26)
 	sales_label.text="Выручка: %d мон. | Клиентов: %d" % [game.revenue,game.customers.size()]
 
@@ -957,7 +957,7 @@ func update_infrastructure(delta: float):
 		if clear and signal_time>=1.0:
 			signal_phase=3
 			signal_time=0.0
-	elif signal_phase==3 and signal_time>=6.0+game.road_level*2.0:
+	elif signal_phase==3 and signal_time>=6.0+game.road_level*2.0 and not pedestrians_on_road():
 		signal_phase=0
 		signal_time=0.0
 	var colors: Array[Color]=[Color("#ff3636"),Color("#ffc238"),Color("#4bec80")]
@@ -1308,3 +1308,9 @@ func build_street_details():
 	box(stage,Vector3(-3.4,0.025,3.55),Vector3(2.15,0.035,0.70),Color("#414347"))
 	for j in range(12):
 		box(stage,Vector3(-4.38+j*0.18,0.046,3.55),Vector3(0.025,0.008,0.66),Color("#5d5e60"))
+
+func pedestrians_on_road() -> bool:
+	for p in game.street_queue:
+		if bool(p.get("crossing",false)):
+			return true
+	return false
