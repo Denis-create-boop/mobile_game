@@ -97,13 +97,13 @@ func _ready():
 	e.background_color = Color("#dce5ed")
 	e.ambient_light_source = Environment.AMBIENT_SOURCE_COLOR
 	e.ambient_light_color = Color("#f0f2f5")
-	e.ambient_light_energy = 0.53
+	e.ambient_light_energy = 0.55
 	env.environment = e
 	stage.add_child(env)
 	var light = DirectionalLight3D.new()
 	light.rotation_degrees = Vector3(-57,-38,0)
-	light.light_energy = 1.10
-	light.light_color=Color("#fff8ef")
+	light.light_energy = 0.88
+	light.light_color=Color("#fff3e1")
 	scene_light=light
 	light.shadow_enabled = true
 	light.directional_shadow_max_distance=30.0
@@ -127,6 +127,7 @@ func _ready():
 	build_district()
 	add_merchandising()
 	build_architecture()
+	build_realistic_details()
 	reset_view()
 	print("Market assets loaded: ",asset_library.catalog.get("market",{}).size())
 	status_label = Label.new()
@@ -297,10 +298,10 @@ func sign_text(parent: Node3D, pos: Vector3, value: String, color: Color, pixel:
 
 func build_store():
 	var wood = Color("#a88b72")
-	var mint = Color("#304b68")
-	var cream = Color("#f0eee8")
+	var mint = Color("#303438")
+	var cream = Color("#887b6b")
 	box(stage,Vector3(0,-0.32,0),Vector3(10.4,0.5,8.4),Color("#8f969b"))
-	make_floor(stage,Vector3(0,-0.05,0),Vector2(10,8),Color("#e9e7e1"))
+	make_floor(stage,Vector3(0,-0.05,0),Vector2(10,8),Color("#bcb0a0"))
 	box(stage,Vector3(0,0.95,-4.0),Vector3(10.3,1.9,0.18),cream)
 	box(stage,Vector3(-5,0.95,0),Vector3(0.18,1.9,8),cream)
 	box(stage,Vector3(0,1.98,-4.0),Vector3(10.45,0.17,0.29),mint)
@@ -316,15 +317,7 @@ func build_store():
 		var shelf = Node3D.new()
 		stage.add_child(shelf)
 		shelf.position = Vector3(x,0,-2.1)
-		var fixture=asset_library.spawn("market",["shelfboxes" if i!=1 else "freezersstanding"],shelf,Vector3.ZERO,Vector3(2.5,1.82,0.95))
-		if fixture==null:
-			box(shelf,Vector3(0,0.9,-0.38),Vector3(2.4,1.8,0.12),wood)
-			for y in [0.22,0.83,1.44]:
-				box(shelf,Vector3(0,y,0),Vector3(2.5,0.11,0.95),cream)
-				box(shelf,Vector3(0,y,0.48),Vector3(2.5,0.12,0.055),mint)
-			for edge in [-1.19,1.19]:
-				box(shelf,Vector3(edge,0.9,0),Vector3(0.10,1.8,0.94),wood)
-			box(shelf,Vector3(0,1.87,0),Vector3(2.5,0.28,0.95),mint)
+		make_retail_fixture(shelf,i,2.5)
 		box(shelf,Vector3(0,1.88,0.48),Vector3(2.5,0.23,0.12),section_color)
 		sign_text(shelf,Vector3(0,1.88,0.55),game.GOODS[i],Color.WHITE,0.0045)
 		var row: Array = []
@@ -332,22 +325,7 @@ func build_store():
 			var item = Node3D.new()
 			shelf.add_child(item)
 			item.position = Vector3(-0.88+(j%4)*0.58,0.29+floori(j/4.0)*0.61,0.07)
-			if asset_library.food(i,item,Vector3.ZERO)!=null:
-				pass
-			elif i==0:
-				ball(item,Vector3(0,0.15,0),Vector3(0.42,0.3,0.55),Color("#c88a43"))
-				for k in range(3):
-					var mark = box(item,Vector3(-0.12+k*0.12,0.29,0),Vector3(0.04,0.015,0.21),Color("#f3cc87"))
-					mark.rotation.y = 0.5
-			elif i==1:
-				box(item,Vector3(0,0.20,0),Vector3(0.29,0.4,0.28),Color("#d9e5df"))
-				box(item,Vector3(0,0.20,0.15),Vector3(0.28,0.17,0.02),Color("#64a8d7"))
-				cylinder(item,Vector3(0,0.43,0),0.07,0.06,Color("#438cb8"))
-			else:
-				for k in range(2):
-					ball(item,Vector3(-0.10+k*0.20,0.13,0),Vector3(0.24,0.25,0.25),Color("#d85b50").lightened(k*0.12))
-					box(item,Vector3(-0.10+k*0.20,0.27,0),Vector3(0.025,0.06,0.025),wood)
-					ball(item,Vector3(-0.06+k*0.20,0.27,0),Vector3(0.11,0.035,0.06),mint)
+			make_product_group(item,i,j)
 			row.append(item)
 		products.append(row)
 		var expansions: Array = []
@@ -372,11 +350,7 @@ func build_store():
 		var counter = Node3D.new()
 		stage.add_child(counter)
 		counter.position = game.counter(i)
-		if asset_library.spawn("market",["checkout","cashregister","counter"],counter,Vector3.ZERO,Vector3(2.3,1.3,0.85))==null:
-			box(counter,Vector3(0,0.48,0),Vector3(2.2,0.96,0.8),mint)
-			box(counter,Vector3(0,1.0,0),Vector3(2.3,0.13,0.85),cream)
-			box(counter,Vector3(-0.3,1.09,0),Vector3(1.2,0.07,0.6),Color("#39484b"))
-			box(counter,Vector3(0.7,1.27,0),Vector3(0.45,0.35,0.12),Color("#263b42"))
+		make_checkout(counter)
 		sign_text(counter,Vector3(0,0.55,0.43),"КАССА "+str(i+1),Color.WHITE,0.005)
 		counters.append(counter)
 		counter.visible = i<game.workers
@@ -503,40 +477,15 @@ func install_rack(slot: int, kind: int):
 	var rack=Node3D.new()
 	stage.add_child(rack)
 	rack.position=game.build_slot(slot)
-	var color=Color("#63a9c4") if kind in [1,3,8,11] else Color("#304b68")
-	var cream=Color("#f1e8d4")
-	var height=1.15 if kind in [2,7] else 1.8
-	var fixture_names=["displayfruit"] if kind in [2,7] else (["freezersstanding"] if kind in [1,3,8,11] else ["shelfboxes"])
-	var fixture=asset_library.spawn("market",fixture_names,rack,Vector3.ZERO,Vector3(2.25,height,0.9))
-	if fixture==null:
-		box(rack,Vector3(0,height/2,-0.36),Vector3(2.25,height,0.12),color)
-		for x in [-1.09,1.09]:
-			box(rack,Vector3(x,height/2,0),Vector3(0.1,height,0.9),color)
+	make_retail_fixture(rack,kind,2.25)
 	var items: Array=[]
-	for y in [0.22,0.75,1.28]:
-		var yy: float=y*0.62 if kind in [2,7] else y
-		if fixture==null:
-			box(rack,Vector3(0,yy,0),Vector3(2.25,0.09,0.9),cream)
-		for j in range(4):
-			var p=Vector3(-0.79+j*0.52,yy+0.18,0.04)
-			var item: Node3D=asset_library.food(kind,rack,p-Vector3(0,0.16,0))
-			if item!=null:
-				pass
-			elif kind==1:
-				item=box(rack,p,Vector3(0.29,0.32,0.27),Color("#a5d4ea"))
-			elif kind==0:
-				item=ball(rack,p,Vector3(0.4,0.26,0.46),Color("#d39b54"))
-			elif kind==2:
-				item=ball(rack,p,Vector3(0.31,0.3,0.31),Color("#d85b50"))
-			else:
-				var colors=[Color("#e9bf61"),Color("#f29b4d"),Color("#704b36"),Color("#874b51"),Color("#71a85c"),Color("#d2a3c6"),Color("#568a63"),Color("#dbb56d"),Color("#8ecedb")]
-				if kind in [7]:
-					item=ball(rack,p,Vector3(0.34,0.27,0.34),colors[kind-3])
-				else:
-					item=box(rack,p,Vector3(0.28,0.32,0.25),colors[kind-3])
-			items.append(item)
-	box(rack,Vector3(0,height+0.04,0),Vector3(2.25,0.16,0.92),color)
-	sign_text(rack,Vector3(0,height+0.04,0.47),game.GOODS[kind],Color.WHITE,0.004)
+	for j in range(12):
+		var item=Node3D.new()
+		rack.add_child(item)
+		item.position=Vector3(-0.78+(j%4)*0.52,0.29+floori(j/4.0)*0.61,0.07)
+		make_product_group(item,kind,j)
+		items.append(item)
+	sign_text(rack,Vector3(0,1.91,0.52),game.GOODS[kind],Color.WHITE,0.004)
 	built_racks[slot]=rack
 	built_items[slot]=items
 
@@ -733,7 +682,7 @@ func _process(delta):
 		actor(people[i],c["pos"],c["carry"],delta)
 		var tag: Label3D=people[i].get_meta("order")
 		tag.text=game.GOODS[c["item"]] if c["phase"]<4 and not c["carry"] else ("Оплата" if c["carry"] and c["phase"]<4 else "")
-	status_label.text=("МАГАЗИН ОТКРЫТ" if game.running else "МАГАЗИН ЗАКРЫТ")+" | V18 • 3D: %d / резерв: %d" % [asset_library.loaded_count,asset_library.fallback_count]
+	status_label.text=("МАГАЗИН ОТКРЫТ" if game.running else "МАГАЗИН ЗАКРЫТ")+" | V19 • 3D: %d / резерв: %d" % [asset_library.loaded_count,asset_library.fallback_count]
 	sales_label.position=Vector2(12,size.y-26)
 	sales_label.text="Выручка: %d мон. | Клиентов: %d" % [game.revenue,game.customers.size()]
 
@@ -789,7 +738,7 @@ uniform vec3 tint : source_color;
 varying vec3 world_position;
 void vertex(){world_position=(MODEL_MATRIX*vec4(VERTEX,1.0)).xyz;}
 void fragment(){
- vec2 coord=world_position.xz;
+ vec2 coord=world_position.xz*1.65;
  vec2 cell=floor(coord);
  vec2 uv=fract(coord);
  float edge=min(min(uv.x,1.0-uv.x),min(uv.y,1.0-uv.y));
@@ -799,7 +748,7 @@ void fragment(){
  float grain=0.0;
  vec3 tile_color=tint*(0.92+variation*0.10+grain);
  ALBEDO=mix(tint*0.79,tile_color,grout);
- ROUGHNESS=0.86;
+ ROUGHNESS=0.57;
 }"""
 	var material=ShaderMaterial.new()
 	material.shader=shader
@@ -1150,3 +1099,152 @@ func update_render_resolution():
 	if wanted!=render_size:
 		render_size=wanted
 		viewport.size=wanted
+
+# Retail materials: reusable brushed metal, satin wood and transparent glazing.
+func metalize(n: MeshInstance3D, color: Color, rough: float=0.35):
+	var material=mat(color).duplicate() as StandardMaterial3D
+	material.metallic=0.65
+	material.roughness=rough
+	n.material_override=material
+
+func glazing(parent: Node3D, pos: Vector3, dimensions: Vector3):
+	var n=box(parent,pos,dimensions,Color("#b9d8de"))
+	var material=StandardMaterial3D.new()
+	material.albedo_color=Color(0.72,0.88,0.93,0.16)
+	material.transparency=BaseMaterial3D.TRANSPARENCY_ALPHA
+	material.roughness=0.16
+	material.metallic=0.12
+	n.material_override=material
+	n.cast_shadow=GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+
+func light_strip(parent: Node3D, pos: Vector3, dimensions: Vector3):
+	var n=box(parent,pos,dimensions,Color("#fff1cd"))
+	var m=StandardMaterial3D.new()
+	m.albedo_color=Color("#fff1cd")
+	m.emission_enabled=true
+	m.emission=Color("#ffe5b5")
+	m.emission_energy_multiplier=1.6
+	n.material_override=m
+	n.cast_shadow=GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+
+func make_retail_fixture(parent: Node3D, kind: int, width: float):
+	var black=Color("#303336")
+	var steel=Color("#737b80")
+	var oak=Color("#a17c56")
+	var cold: bool=kind in [1,3,8,11]
+	box(parent,Vector3(0,0.10,0),Vector3(width,0.20,0.96),black)
+	box(parent,Vector3(0,0.94,-0.43),Vector3(width,1.76,0.08),black if cold else oak)
+	for side in [-1,1]:
+		var x: float=side*(width*0.5-0.035)
+		metalize(box(parent,Vector3(x,0.97,0),Vector3(0.07,1.80,0.94),steel),steel)
+		box(parent,Vector3(x,0.96,0.39),Vector3(0.055,1.78,0.06),black)
+	for y in [0.23,0.84,1.45]:
+		metalize(box(parent,Vector3(0,y,0),Vector3(width-0.12,0.075,0.85),steel),steel)
+		box(parent,Vector3(0,y,0.445),Vector3(width-0.10,0.085,0.035),black)
+		for j in range(4):
+			var x: float=-width*0.375+j*width*0.25
+			box(parent,Vector3(x,y,0.466),Vector3(0.22,0.045,0.01),Color("#eee8d8"))
+			for k in range(3):
+				box(parent,Vector3(x-0.06+k*0.04,y,0.474),Vector3(0.009,0.023,0.004),black)
+		light_strip(parent,Vector3(0,y+0.035,-0.33),Vector3(width-0.18,0.018,0.035))
+	box(parent,Vector3(0,1.85,0),Vector3(width,0.13,0.95),black)
+	light_strip(parent,Vector3(0,1.77,0.36),Vector3(width-0.16,0.025,0.045))
+	if cold:
+		for side in [-1,1]:
+			var x: float=side*width*0.25
+			glazing(parent,Vector3(x,1.0,0.49),Vector3(width*0.5-0.055,1.57,0.018))
+			box(parent,Vector3(x+side*0.42,1.04,0.53),Vector3(0.035,0.28,0.045),steel)
+		box(parent,Vector3(0,1.0,0.50),Vector3(0.045,1.63,0.04),black)
+		for j in range(11):
+			box(parent,Vector3(-width*0.41+j*width*0.082,0.10,0.49),Vector3(0.025,0.075,0.015),steel)
+
+func make_product_group(parent: Node3D, kind: int, serial: int):
+	var palette: Array[Color]=[Color("#d34c36"),Color("#e8aa30"),Color("#3e80b2"),Color("#528744"),Color("#f0e6ce"),Color("#794d36")]
+	if kind==0:
+		for j in range(3):
+			var x: float=(j-1)*0.15
+			var bread=ball(parent,Vector3(x,0.10,0),Vector3(0.16,0.20,0.38),Color("#b87836").lightened(j*0.08))
+			for k in range(3):
+				var cut=box(parent,Vector3(x,0.19,-0.10+k*0.10),Vector3(0.12,0.009,0.025),Color("#e7bd77"))
+				cut.rotation.y=0.45
+	elif kind in [2,7]:
+		for j in range(6):
+			var color: Color=Color("#bd3c27") if (j+serial)%3==0 else Color("#87a342") if (j+serial)%3==1 else Color("#e6a22e")
+			if kind==7:
+				color=Color("#4f863e") if j%2==0 else Color("#c88032")
+			var p=Vector3((j%3-1)*0.14,0.07,-0.10+floori(j/3.0)*0.16)
+			ball(parent,p,Vector3(0.14,0.14,0.14),color)
+			box(parent,p+Vector3(0,0.077,0),Vector3(0.015,0.035,0.015),Color("#60452d"))
+	else:
+		for j in range(3):
+			var x: float=(j-1)*0.15
+			var color: Color=palette[(serial+j+kind)%palette.size()]
+			if kind in [4,5,9]:
+				cylinder(parent,Vector3(x,0.13,0),0.059,0.26,color)
+				cylinder(parent,Vector3(x,0.275,0),0.042,0.04,Color("#dad9d2"))
+				cylinder(parent,Vector3(x,0.12,0),0.061,0.105,Color("#eee2c4"))
+			else:
+				var h: float=0.30 if kind==1 else 0.22
+				box(parent,Vector3(x,h*0.5,0),Vector3(0.13,h,0.14),Color("#f0eee7") if kind==1 else color)
+				box(parent,Vector3(x,h*0.45,0.073),Vector3(0.12,h*0.50,0.008),color)
+				box(parent,Vector3(x,h*0.48,0.079),Vector3(0.075,0.035,0.004),Color("#f8efda"))
+				for k in range(2):
+					box(parent,Vector3(x,h*0.32-k*0.018,0.079),Vector3(0.065,0.008,0.004),Color("#4b4944"))
+				if kind==1:
+					cylinder(parent,Vector3(x,h+0.016,0),0.032,0.032,color)
+
+func make_checkout(parent: Node3D):
+	var graphite=Color("#393c3f")
+	var steel=Color("#a0a4a3")
+	var green=Color("#6aa65a")
+	box(parent,Vector3(0,0.44,0),Vector3(2.20,0.88,0.76),graphite)
+	metalize(box(parent,Vector3(0,0.94,0),Vector3(2.30,0.12,0.83),steel),steel)
+	box(parent,Vector3(-0.36,1.013,0),Vector3(1.36,0.035,0.58),Color("#222629"))
+	for x in [-1.05,0.32]:
+		metalize(box(parent,Vector3(x,1.04,0),Vector3(0.055,0.055,0.65),steel),steel)
+	box(parent,Vector3(0,0.86,0.40),Vector3(2.15,0.035,0.025),green)
+	box(parent,Vector3(0.60,1.03,0.05),Vector3(0.32,0.055,0.30),Color("#15191c"))
+	glazing(parent,Vector3(0.60,1.065,0.05),Vector3(0.25,0.012,0.22))
+	box(parent,Vector3(0.89,1.15,-0.20),Vector3(0.075,0.30,0.075),graphite)
+	box(parent,Vector3(0.89,1.36,-0.20),Vector3(0.38,0.27,0.075),graphite)
+	light_strip(parent,Vector3(0.89,1.36,-0.157),Vector3(0.31,0.19,0.009))
+	for j in range(3):
+		box(parent,Vector3(0.89,1.30+j*0.05,-0.148),Vector3(0.24,0.012,0.005),Color("#3a777e"))
+	box(parent,Vector3(0.75,1.09,0.25),Vector3(0.16,0.10,0.23),Color("#24282b"))
+	for j in range(3):
+		for k in range(3):
+			box(parent,Vector3(0.70+j*0.045,1.145,0.19+k*0.045),Vector3(0.028,0.009,0.028),steel)
+
+func build_realistic_details():
+	var graphite=Color("#303438")
+	var wood=Color("#906b49")
+	# Warm lit timber wall panels behind equipment.
+	for i in range(22):
+		box(stage,Vector3(-4.77+i*0.45,0.94,-3.76),Vector3(0.435,1.78,0.05),wood.lightened(float(i%4)*0.045))
+	for x in [-4.55,-1.65,1.45,4.5]:
+		light_strip(stage,Vector3(x,1.90,-3.68),Vector3(0.09,0.05,0.26))
+		var lamp=OmniLight3D.new()
+		lamp.light_color=Color("#ffddaf")
+		lamp.light_energy=0.55
+		lamp.omni_range=3.5
+		lamp.shadow_enabled=false
+		stage.add_child(lamp)
+		lamp.position=Vector3(x,2.15,-3.15)
+	# Front glazing, keeping the original entrance clear.
+	for x in [-0.85,1.45,3.75]:
+		glazing(stage,Vector3(x,1.05,4.12),Vector3(2.12,1.78,0.025))
+		for dx in [-1.08,1.08]:
+			box(stage,Vector3(x+dx,1.05,4.12),Vector3(0.075,1.90,0.12),graphite)
+		box(stage,Vector3(x,0.14,4.12),Vector3(2.16,0.16,0.16),graphite)
+		box(stage,Vector3(x,1.98,4.12),Vector3(2.16,0.09,0.12),graphite)
+	# Storage rack with cardboard cartons and packing labels.
+	for y in [0.26,0.95,1.64]:
+		metalize(box(stage,Vector3(-7.4,y,-2.0),Vector3(0.75,0.08,2.5),Color("#777d80")),Color("#777d80"))
+		for j in range(4):
+			var p=Vector3(-7.4,y+0.22,-2.9+j*0.60)
+			box(stage,p,Vector3(0.62,0.36,0.51),Color("#b49265"))
+			box(stage,p+Vector3(0,0.183,0),Vector3(0.08,0.009,0.51),Color("#dfc39b"))
+			box(stage,p+Vector3(0.314,0.04,0),Vector3(0.009,0.12,0.24),Color("#eee7d9"))
+	for z in [-3.23,-0.77]:
+		for x in [-7.77,-7.03]:
+			metalize(box(stage,Vector3(x,0.90,z),Vector3(0.055,1.80,0.055),Color("#777d80")),Color("#777d80"))
