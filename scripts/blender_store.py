@@ -168,6 +168,14 @@ for name,floor_c,wall_c,accent_c,wood_c,grout_c in (palettes[-1:] if "--game-ass
 if "--game-assets" in sys.argv:
     target=Path(sys.argv[sys.argv.index("--game-assets")+1]).resolve()
     target.mkdir(parents=True,exist_ok=True)
+    # glTF needs explicit PBR inputs; Blender procedural noise is not exported.
+    for material in (tile,wall,wood):
+        nodes=material.node_tree.nodes
+        principled=nodes.get("Principled BSDF")
+        for key in ("Base Color","Normal"):
+            for link in list(principled.inputs[key].links):
+                material.node_tree.links.remove(link)
+        principled.inputs["Base Color"].default_value=material.diffuse_color
     def export_module(name, origin, maker):
         before=set(bpy.data.objects)
         maker()
@@ -217,3 +225,21 @@ if "--game-assets" in sys.argv:
     export_module("cold",(0,0,0),game_cold)
     export_module("checkout",(0,0,0),game_checkout)
     export_module("shell",(0,0,0),game_shell)
+    def street_surface():
+        ground=mat("Urban paving",(.075,.085,.09),.88)
+        curb=mat("Concrete kerb",(.25,.27,.28),.8)
+        box("Urban block",(0,0,-.34),(85,70,.20),ground)
+        for x in range(-20,21):
+            box("Pavement joint",(x*1.0,0,-.232),(.012,12,.008),curb,0)
+    export_module("street",(0,0,0),street_surface)
+    def game_plant():
+        plant(0,0)
+    export_module("plant",(0,0,0),game_plant)
+    def game_bench():
+        for j in range(5):
+            box("Seat slat",(0,-.18+j*.09,.40),(1.6,.075,.06),wood)
+        for j in range(4):
+            box("Back slat",(0,.22,.51+j*.075),(1.6,.055,.055),wood)
+        for x in [-.64,.64]:
+            box("Metal leg",(x,0,.22),(.08,.42,.44),dark)
+    export_module("bench",(0,0,0),game_bench)

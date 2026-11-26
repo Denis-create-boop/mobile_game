@@ -32,7 +32,7 @@ jobs:
           sudo apt-get install -y blender python3-numpy
           mkdir -p assets/premium
           blender -b -t 4 --python-exit-code 1 --python scripts/blender_store.py -- /tmp/premium-art --game-assets assets/premium
-          for module in shell shelf cold checkout; do test -s "assets/premium/$module.glb"; done
+          for module in shell shelf cold checkout street plant bench; do test -s "assets/premium/$module.glb"; done
       - name: Import and check scripts
         run: |
           set -o pipefail

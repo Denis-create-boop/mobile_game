@@ -95,21 +95,21 @@ func _ready():
 	var env = WorldEnvironment.new()
 	var e = Environment.new()
 	e.background_mode = Environment.BG_COLOR
-	e.background_color = Color("#dce5ed")
+	e.background_color = Color("#353b43")
 	e.ambient_light_source = Environment.AMBIENT_SOURCE_COLOR
 	e.ambient_light_color = Color("#f0f2f5")
-	e.ambient_light_energy = 0.34
+	e.ambient_light_energy = 0.48
 	env.environment = e
 	stage.add_child(env)
 	var light = DirectionalLight3D.new()
 	light.rotation_degrees = Vector3(-57,-38,0)
-	light.light_energy = 0.85
+	light.light_energy = 0.64
 	light.light_color=Color("#fff8ef")
 	scene_light=light
 	light.shadow_enabled = true
 	light.directional_shadow_max_distance=30.0
-	light.shadow_bias=0.04
-	light.shadow_normal_bias=0.55
+	light.shadow_bias=0.10
+	light.shadow_normal_bias=1.0
 	stage.add_child(light)
 	camera = Camera3D.new()
 	camera.projection = Camera3D.PROJECTION_ORTHOGONAL
@@ -121,8 +121,8 @@ func _ready():
 	load_premium_models()
 	build_store()
 	build_extension()
-	decorate_store()
 	if not premium_models.has("shell"):
+		decorate_store()
 		add_details()
 	add_landscaping()
 	build_city()
@@ -742,7 +742,7 @@ func _process(delta):
 		actor(people[i],c["pos"],c["carry"],delta)
 		var tag: Label3D=people[i].get_meta("order")
 		tag.text=game.GOODS[c["item"]] if c["phase"]<4 and not c["carry"] else ("Оплата" if c["carry"] and c["phase"]<4 else "")
-	status_label.text=("МАГАЗИН ОТКРЫТ" if game.running else "МАГАЗИН ЗАКРЫТ")+" | V26 • 3D: %d / резерв: %d" % [asset_library.loaded_count,asset_library.fallback_count]
+	status_label.text=("МАГАЗИН ОТКРЫТ" if game.running else "МАГАЗИН ЗАКРЫТ")+" | V27 • 3D: %d / резерв: %d" % [asset_library.loaded_count,asset_library.fallback_count]
 	sales_label.position=Vector2(12,size.y-26)
 	sales_label.text="Выручка: %d мон. | Клиентов: %d" % [game.revenue,game.customers.size()]
 
@@ -817,9 +817,10 @@ void fragment(){
 
 func add_landscaping():
 	var asphalt=Color("#41454a")
-	var grass=Color("#7b8e69")
-	var concrete=Color("#c4c6c8")
-	box(stage,Vector3(2,-0.56,1),Vector3(85,0.2,70),grass)
+	var grass=Color("#52604b")
+	var concrete=Color("#7c8185")
+	if not spawn_premium("street",stage,Vector3(2,-0.22,1),0.0):
+		box(stage,Vector3(2,-0.56,1),Vector3(85,0.2,70),Color("#555b60"))
 	box(stage,Vector3(2,-0.43,19.5),Vector3(42,0.13,5.4),asphalt)
 	box(stage,Vector3(2,-0.20,16.4),Vector3(42,0.18,1.5),concrete)
 	for i in range(22):
@@ -829,7 +830,8 @@ func add_landscaping():
 		ball(stage,pos+Vector3(0,1.9,0),Vector3(1.5,1.75,1.5),grass.darkened(0.12))
 		ball(stage,pos+Vector3(0.36,1.6,0.13),Vector3(0.9,1.0,1.0),grass.lightened(0.12))
 	# Warm metal bins and a little storefront bench.
-	box(stage,Vector3(-0.8,0.28,4.12),Vector3(1.7,0.13,0.42),Color("#a8794b"))
+	if not spawn_premium("bench",stage,Vector3(-0.8,0,4.65),0.0):
+		box(stage,Vector3(-0.8,0.28,4.12),Vector3(1.7,0.13,0.42),Color("#a8794b"))
 	for x in [-1.5,-0.1]:
 		box(stage,Vector3(x,0.03,4.12),Vector3(0.1,0.45,0.35),Color("#39494c"))
 
@@ -1167,7 +1169,7 @@ func pedestrians_on_road() -> bool:
 	return false
 
 func load_premium_models():
-	for kind in ["shell","shelf","cold","checkout"]:
+	for kind in ["shell","shelf","cold","checkout","street","plant","bench"]:
 		var path: String="res://assets/premium/"+kind+".glb"
 		if ResourceLoader.exists(path):
 			var resource=load(path)
@@ -1183,4 +1185,22 @@ func spawn_premium(kind: String, parent: Node3D, pos: Vector3, angle: float, dim
 	node.position=pos
 	node.rotation.y=angle
 	node.scale=dimensions_scale
+	if kind=="shell":
+		apply_shell_palette(node)
 	return true
+
+func apply_shell_palette(root: Node):
+	if root is MeshInstance3D:
+		var n: String=String(root.name).to_lower()
+		var color: Color=Color("#424952")
+		if "porcelain" in n:
+			color=Color("#505861")
+		elif "wall" in n and not "cap" in n:
+			color=Color("#7d848b")
+		elif "mullion" in n:
+			color=Color("#50555b")
+		elif "foundation" in n or "cap" in n or "lintel" in n or "plinth" in n:
+			color=Color("#2b3037")
+		root.material_override=mat(color)
+	for child in root.get_children():
+		apply_shell_palette(child)
