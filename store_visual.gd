@@ -79,7 +79,7 @@ func _ready():
 	viewport = SubViewport.new()
 	viewport.size = Vector2i(960,640)
 	viewport.own_world_3d = true
-	viewport.msaa_3d = Viewport.MSAA_4X
+	viewport.msaa_3d = Viewport.MSAA_2X
 	viewport.render_target_update_mode = SubViewport.UPDATE_ALWAYS
 	add_child(viewport)
 	render_surface=TextureRect.new()
@@ -742,7 +742,7 @@ func _process(delta):
 		actor(people[i],c["pos"],c["carry"],delta)
 		var tag: Label3D=people[i].get_meta("order")
 		tag.text=game.GOODS[c["item"]] if c["phase"]<4 and not c["carry"] else ("Оплата" if c["carry"] and c["phase"]<4 else "")
-	status_label.text=("МАГАЗИН ОТКРЫТ" if game.running else "МАГАЗИН ЗАКРЫТ")+" | V27 • 3D: %d / резерв: %d" % [asset_library.loaded_count,asset_library.fallback_count]
+	status_label.text=("МАГАЗИН ОТКРЫТ" if game.running else "МАГАЗИН ЗАКРЫТ")+" | V28 • 3D: %d / резерв: %d" % [asset_library.loaded_count,asset_library.fallback_count]
 	sales_label.position=Vector2(12,size.y-26)
 	sales_label.text="Выручка: %d мон. | Клиентов: %d" % [game.revenue,game.customers.size()]
 
@@ -782,7 +782,7 @@ func add_details():
 
 func toggle_quality():
 	quality_high=not quality_high
-	viewport.msaa_3d=Viewport.MSAA_4X if quality_high else Viewport.MSAA_DISABLED
+	viewport.msaa_3d=Viewport.MSAA_2X if quality_high else Viewport.MSAA_DISABLED
 	scene_light.shadow_enabled=quality_high
 	update_render_resolution()
 
@@ -1085,9 +1085,9 @@ func build_district():
 		root.hide()
 
 func build_architecture():
-	var brick=Color("#d8d5d0")
+	var brick=Color("#777e85")
 	var dark=Color("#293a40")
-	var cream=Color("#f5f5f3")
+	var cream=Color("#a7aaad")
 	var glass=Color("#7fa7b6")
 	# Paved forecourt, with a low kerb and alternating stone joints.
 	box(stage,Vector3(0,-0.15,5.0),Vector3(10.5,0.18,1.75),Color("#b6b6ad"))
@@ -1152,9 +1152,9 @@ func update_render_resolution():
 		return
 	var transform_scale: Vector2=get_global_transform_with_canvas().get_scale().abs()
 	var screen_size: Vector2=size*transform_scale
-	var scale_factor: float=1.75 if quality_high else 1.0
+	var scale_factor: float=1.0 if quality_high else 0.8
 	var target: Vector2=screen_size*scale_factor
-	var limit: float=3200.0 if quality_high else 1600.0
+	var limit: float=1920.0 if quality_high else 1280.0
 	if maxf(target.x,target.y)>limit:
 		target*=limit/maxf(target.x,target.y)
 	var wanted=Vector2i(maxi(2,roundi(target.x)),maxi(2,roundi(target.y)))
@@ -1185,8 +1185,6 @@ func spawn_premium(kind: String, parent: Node3D, pos: Vector3, angle: float, dim
 	node.position=pos
 	node.rotation.y=angle
 	node.scale=dimensions_scale
-	if kind=="shell":
-		apply_shell_palette(node)
 	return true
 
 func apply_shell_palette(root: Node):

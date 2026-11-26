@@ -185,6 +185,22 @@ if "--game-assets" in sys.argv:
             o.location-=Vector(origin)
             o.select_set(True)
         bpy.context.view_layer.objects.active=objects[0]
+        # Join by material to reduce draw calls on software WebGL and mobile.
+        groups={}
+        for o in objects:
+            key=tuple(m.name if m else "" for m in o.data.materials)
+            groups.setdefault(key,[]).append(o)
+        merged=[]
+        for group in groups.values():
+            bpy.ops.object.select_all(action='DESELECT')
+            for o in group: o.select_set(True)
+            bpy.context.view_layer.objects.active=group[0]
+            bpy.ops.object.join()
+            merged.append(bpy.context.object)
+        objects=merged
+        bpy.ops.object.select_all(action='DESELECT')
+        for o in objects: o.select_set(True)
+        bpy.context.view_layer.objects.active=objects[0]
         bpy.ops.export_scene.gltf(filepath=str(target/(name+".glb")),export_format="GLB",use_selection=True,export_apply=True)
         for o in objects: bpy.data.objects.remove(o,do_unlink=True)
     def game_shelf():
