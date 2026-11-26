@@ -45,6 +45,8 @@ var signal_lamps: Array[MeshInstance3D] = []
 var street_people: Array[Node3D] = []
 var signal_phase: int = 0
 var signal_time: float = 0.0
+var district_models: Array[Node3D] = []
+var growth_tiles: Array[Node3D] = []
 var last_road: int = 0
 var last_cross: int = -1
 const CROSS_X: float = -3.4
@@ -104,6 +106,7 @@ func _ready():
 	add_landscaping()
 	build_city()
 	build_infrastructure()
+	build_district()
 	add_merchandising()
 	reset_view()
 	print("Market assets loaded: ",asset_library.catalog.get("market",{}).size())
@@ -135,8 +138,8 @@ func reset_view():
 	update_camera()
 
 func overview():
-	focus_goal=Vector3(3,0.5,5)
-	zoom_goal=25.0
+	focus_goal=Vector3(3,0.5,10)
+	zoom_goal=36.0
 
 func zoom(factor: float):
 	zoom_goal=clampf(zoom_goal*factor,6,30)
@@ -582,6 +585,10 @@ func _process(delta):
 		land_signs[i].visible=not land_wings[i].visible
 	parking.visible=game.parking_owned
 	parking_sign.visible=not game.parking_owned
+	for i in range(district_models.size()):
+		district_models[i].visible=game.district_units[i]
+	for i in range(growth_tiles.size()):
+		growth_tiles[i].visible=game.land_steps>=19+i
 	update_infrastructure(delta)
 	update_traffic(delta)
 	for i in range(24):
@@ -663,7 +670,7 @@ func _process(delta):
 		actor(people[i],c["pos"],c["carry"],delta)
 		var tag: Label3D=people[i].get_meta("order")
 		tag.text=game.GOODS[c["item"]] if c["phase"]<4 and not c["carry"] else ("Оплата" if c["carry"] and c["phase"]<4 else "")
-	status_label.text=("МАГАЗИН ОТКРЫТ" if game.running else "МАГАЗИН ЗАКРЫТ")+" | V13 • 3D: %d / резерв: %d" % [asset_library.loaded_count,asset_library.fallback_count]
+	status_label.text=("МАГАЗИН ОТКРЫТ" if game.running else "МАГАЗИН ЗАКРЫТ")+" | V14 • 3D: %d / резерв: %d" % [asset_library.loaded_count,asset_library.fallback_count]
 	sales_label.position=Vector2(12,size.y-28)
 	sales_label.text="Выручка: %d мон. | Клиентов: %d" % [game.revenue,game.customers.size()]
 
@@ -739,7 +746,7 @@ func add_landscaping():
 	var asphalt=Color("#526366")
 	var grass=Color("#658b68")
 	var concrete=Color("#b7b2a2")
-	box(stage,Vector3(2,-0.56,1),Vector3(43,0.2,36),grass)
+	box(stage,Vector3(2,-0.56,1),Vector3(68,0.2,70),grass)
 	box(stage,Vector3(2,-0.43,19.5),Vector3(42,0.13,5.4),asphalt)
 	box(stage,Vector3(2,-0.20,16.4),Vector3(42,0.18,1.5),concrete)
 	for i in range(22):
@@ -969,3 +976,36 @@ func update_infrastructure(delta: float):
 		var p: Dictionary=game.street_queue[i]
 		var target: Vector3=p["pos"]
 		actor(street_people[i],target,false,delta)
+
+func build_district():
+	var trim=Color("#355f59")
+	var stone=Color("#d2c4ae")
+	for i in range(72):
+		var tile=Node3D.new()
+		stage.add_child(tile)
+		var p=Vector3(14.0+float(i%6)*1.45,-0.05,-4.0+float(floori(i/6.0))*1.45)
+		box(tile,p,Vector3(1.44,0.10,1.44),stone.lightened(float(i%3)*0.025))
+		growth_tiles.append(tile)
+	for i in range(3):
+		var root=Node3D.new()
+		stage.add_child(root)
+		root.position=Vector3(18.0,-0.05,-9.0-i*5.6)
+		var accent: Color=[Color("#b87949"),Color("#637eaa"),Color("#977487")][i]
+		box(root,Vector3(0,0.03,0),Vector3(7.5,0.12,5.1),stone)
+		box(root,Vector3(0,1.55,-2.35),Vector3(7.3,3.0,0.22),stone)
+		for x in [-3.5,3.5]:
+			box(root,Vector3(x,1.55,0),Vector3(0.22,3.0,4.8),stone)
+			box(root,Vector3(x,1.55,2.35),Vector3(0.23,3.0,0.23),trim)
+		box(root,Vector3(0,3.2,2.35),Vector3(7.4,0.75,0.35),accent)
+		sign_text(root,Vector3(0,3.2,2.55),["КАФЕ","ОДЕЖДА","ОБУВЬ"][i],Color.WHITE,0.012)
+		for x in [-2.3,0.0,2.3]:
+			box(root,Vector3(x,0.55,-1.5),Vector3(1.7,1.05,0.8),accent)
+			box(root,Vector3(x,1.11,-1.5),Vector3(1.8,0.08,0.9),stone)
+			if i==0:
+				cylinder(root,Vector3(x,0.65,0.9),0.55,0.12,trim)
+				cylinder(root,Vector3(x,0.3,0.9),0.09,0.6,trim)
+			else:
+				for j in range(3):
+					box(root,Vector3(x-0.5+j*0.5,1.25,-1.5),Vector3(0.34,0.24,0.38),accent.lightened(j*0.15))
+		district_models.append(root)
+		root.hide()
