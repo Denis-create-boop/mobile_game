@@ -52,6 +52,8 @@ var district_models: Array[Node3D] = []
 var facade_title: Label3D
 var facade_tiers: Array[Node3D] = []
 var expansion_base: Node3D
+var adjacent_plots: Array[Node3D] = []
+var plot_markers: Array[Node3D] = []
 var growth_tiles: Array[Node3D] = []
 var last_road: int = 0
 var last_cross: int = -1
@@ -126,7 +128,7 @@ func _ready():
 	reset_view()
 	print("Market assets loaded: ",asset_library.catalog.get("market",{}).size())
 	status_label = Label.new()
-	status_label.position = Vector2(12,8)
+	status_label.position = Vector2(12,53)
 	status_label.mouse_filter=Control.MOUSE_FILTER_IGNORE
 	status_label.add_theme_font_size_override("font_size",18)
 	status_label.add_theme_color_override("font_color",Color("#fff1d8"))
@@ -282,6 +284,7 @@ func build_store():
 		box(stage,Vector3(x,1.05,-3.79),Vector3(2.0,0.06,0.04),cream)
 	for i in range(3):
 		var x = -3.25 + i*3.1
+		var section_color: Color=[Color("#c98b42"),Color("#4386ad"),Color("#6f9855")][i]
 		var shelf = Node3D.new()
 		stage.add_child(shelf)
 		shelf.position = Vector3(x,0,-2.1)
@@ -294,7 +297,8 @@ func build_store():
 			for edge in [-1.19,1.19]:
 				box(shelf,Vector3(edge,0.9,0),Vector3(0.10,1.8,0.94),wood)
 			box(shelf,Vector3(0,1.87,0),Vector3(2.5,0.28,0.95),mint)
-		sign_text(shelf,Vector3(0,1.88,0.49),game.GOODS[i],Color.WHITE,0.0045)
+		box(shelf,Vector3(0,1.88,0.48),Vector3(2.5,0.23,0.12),section_color)
+		sign_text(shelf,Vector3(0,1.88,0.55),game.GOODS[i],Color.WHITE,0.0045)
 		var row: Array = []
 		for j in range(12):
 			var item = Node3D.new()
@@ -410,35 +414,33 @@ func build_extension():
 	var cream=Color("#f0eee8")
 	var mint=Color("#304b68")
 	var wood=Color("#a98c72")
-	# Additional retail wing with accessible construction pads.
+	# Connected strips along the right edge of the original shop.
 	expansion_base=Node3D.new()
 	stage.add_child(expansion_base)
-	box(expansion_base,Vector3(8.6,-0.29,0),Vector3(8.2,0.48,8.4),Color("#8f969b"))
-	make_floor(expansion_base,Vector3(8.6,-0.05,0),Vector2(8.2,8),Color("#e9e7e1"))
-	box(expansion_base,Vector3(8.6,0.85,-4),Vector3(8.3,1.7,0.18),cream)
-	box(expansion_base,Vector3(8.6,1.77,-4),Vector3(8.3,0.12,0.26),mint)
 	annex=Node3D.new()
 	stage.add_child(annex)
-	box(annex,Vector3(8.6,-0.29,5.8),Vector3(8.2,0.48,4.4),Color("#8f969b"))
-	make_floor(annex,Vector3(8.6,-0.05,5.8),Vector2(8.2,4.4),Color("#e9e7e1"))
-	for wing in range(2):
-		var hall=Node3D.new()
-		stage.add_child(hall)
-		var z: float=10.2+wing*4.5
-		box(hall,Vector3(8.6,-0.29,z),Vector3(8.2,0.48,4.5),Color("#8f969b"))
-		make_floor(hall,Vector3(8.6,-0.05,z),Vector2(8.2,4.5),Color("#e9e7e1"))
-		land_wings.append(hall)
+	for i in range(4):
+		var strip=Node3D.new()
+		stage.add_child(strip)
+		var x: float=6.5+i*3.0
+		box(strip,Vector3(x,-0.25,0.8),Vector3(3.0,0.4,9.6),Color("#a4a8a9"))
+		make_floor(strip,Vector3(x,-0.05,0.8),Vector2(3.0,9.6),Color("#e8e4dc"))
+		box(strip,Vector3(x,1.0,-4.0),Vector3(3.0,2.0,0.18),cream)
+		box(strip,Vector3(x,2.08,-4.0),Vector3(3.0,0.16,0.25),mint)
+		adjacent_plots.append(strip)
 		var marker=Node3D.new()
 		stage.add_child(marker)
-		box(marker,Vector3(8.6,-0.20,z),Vector3(8.1,0.12,4.4),Color("#a2a8a0"))
-		var notice=Label3D.new()
-		notice.text="УЧАСТОК %d • %d мон." % [wing+2,game.LAND_PRICES[wing+1]]
-		notice.billboard=BaseMaterial3D.BILLBOARD_ENABLED
-		notice.font_size=48
-		notice.pixel_size=0.012
-		marker.add_child(notice)
-		notice.position=Vector3(8.6,0.65,z)
-		land_signs.append(marker)
+		box(marker,Vector3(x,-0.28,0.8),Vector3(2.94,0.13,9.54),Color("#afbb91"))
+		for z in [-3.9,5.5]:
+			box(marker,Vector3(x,-0.18,z),Vector3(2.9,0.035,0.08),Color("#f9e4a3"))
+		var tag=Label3D.new()
+		tag.text="РАСШИРЕНИЕ"
+		tag.billboard=BaseMaterial3D.BILLBOARD_ENABLED
+		tag.font_size=42
+		tag.pixel_size=0.009
+		marker.add_child(tag)
+		tag.position=Vector3(x,0.45,1.0)
+		plot_markers.append(marker)
 	for i in range(24):
 		var center: Vector3=game.build_slot(i)
 		var pad=box(stage,center+Vector3(0,0.015,0),Vector3(2.4,0.035,1.65),Color("#92b5d5"))
@@ -600,7 +602,10 @@ func _process(delta):
 	camera_zoom=lerpf(camera_zoom,zoom_goal,minf(1,delta*6))
 	update_camera()
 	var displayed=[12,12,12,0,0,0,0,0,0,0,0,0]
-	expansion_base.visible=game.land_steps>0 or game.build_kind>=0 or game.placements.count(-1)<24
+	var owned: int=ceili(float(game.active_slots())/6.0)
+	for i in range(adjacent_plots.size()):
+		adjacent_plots[i].visible=i<owned
+		plot_markers[i].visible=i==owned
 	var tier: int=0
 	match game.business_name():
 		"Магазин": tier=1
@@ -701,8 +706,8 @@ func _process(delta):
 		actor(people[i],c["pos"],c["carry"],delta)
 		var tag: Label3D=people[i].get_meta("order")
 		tag.text=game.GOODS[c["item"]] if c["phase"]<4 and not c["carry"] else ("Оплата" if c["carry"] and c["phase"]<4 else "")
-	status_label.text=("МАГАЗИН ОТКРЫТ" if game.running else "МАГАЗИН ЗАКРЫТ")+" | V16 • 3D: %d / резерв: %d" % [asset_library.loaded_count,asset_library.fallback_count]
-	sales_label.position=Vector2(12,size.y-28)
+	status_label.text=("МАГАЗИН ОТКРЫТ" if game.running else "МАГАЗИН ЗАКРЫТ")+" | V17 • 3D: %d / резерв: %d" % [asset_library.loaded_count,asset_library.fallback_count]
+	sales_label.position=Vector2(12,size.y-26)
 	sales_label.text="Выручка: %d мон. | Клиентов: %d" % [game.revenue,game.customers.size()]
 
 
@@ -778,7 +783,7 @@ func add_landscaping():
 	var asphalt=Color("#41454a")
 	var grass=Color("#7b8e69")
 	var concrete=Color("#c4c6c8")
-	box(stage,Vector3(2,-0.56,1),Vector3(68,0.2,70),grass)
+	box(stage,Vector3(2,-0.56,1),Vector3(85,0.2,70),grass)
 	box(stage,Vector3(2,-0.43,19.5),Vector3(42,0.13,5.4),asphalt)
 	box(stage,Vector3(2,-0.20,16.4),Vector3(42,0.18,1.5),concrete)
 	for i in range(22):
@@ -1014,13 +1019,13 @@ func build_district():
 	for i in range(72):
 		var tile=Node3D.new()
 		stage.add_child(tile)
-		var p=Vector3(14.0+float(i%6)*1.45,-0.05,-4.0+float(floori(i/6.0))*1.45)
+		var p=Vector3(17.725+float(i%6)*1.45,-0.05,-3.275+float(floori(i/6.0))*1.45)
 		box(tile,p,Vector3(1.44,0.10,1.44),stone.lightened(float(i%3)*0.025))
 		growth_tiles.append(tile)
 	for i in range(3):
 		var root=Node3D.new()
 		stage.add_child(root)
-		root.position=Vector3(18.0,-0.05,-9.0-i*5.6)
+		root.position=Vector3(20.75+i*7.5,-0.05,-6.5)
 		var accent: Color=[Color("#b87949"),Color("#637eaa"),Color("#977487")][i]
 		box(root,Vector3(0,0.03,0),Vector3(7.5,0.12,5.1),stone)
 		box(root,Vector3(0,1.55,-2.35),Vector3(7.3,3.0,0.22),stone)
@@ -1078,7 +1083,7 @@ func build_architecture():
 	for tier in range(5):
 		var root=Node3D.new()
 		stage.add_child(root)
-		var accent: Color=[Color("#243f5b"),Color("#405b75"),Color("#315f87"),Color("#3c435b"),Color("#8f7550")][tier]
+		var accent: Color=[Color("#b84d42"),Color("#2e7c70"),Color("#356da0"),Color("#664a88"),Color("#b48a38")][tier]
 		var width: float=3.2+float(tier)*1.6
 		var center: float=-3.4+float(tier)*0.8
 		box(root,Vector3(center,2.13,4.40),Vector3(width,0.13,1.00),accent)
@@ -1109,9 +1114,9 @@ func update_render_resolution():
 		return
 	var transform_scale: Vector2=get_global_transform_with_canvas().get_scale().abs()
 	var screen_size: Vector2=size*transform_scale
-	var scale_factor: float=1.5 if quality_high else 1.0
+	var scale_factor: float=1.75 if quality_high else 1.0
 	var target: Vector2=screen_size*scale_factor
-	var limit: float=2560.0 if quality_high else 1600.0
+	var limit: float=3200.0 if quality_high else 1600.0
 	if maxf(target.x,target.y)>limit:
 		target*=limit/maxf(target.x,target.y)
 	var wanted=Vector2i(maxi(2,roundi(target.x)),maxi(2,roundi(target.y)))

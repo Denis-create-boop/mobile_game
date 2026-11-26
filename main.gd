@@ -89,6 +89,8 @@ var hint: Label
 var shop_rows: Array[Button] = []
 var show_locked: bool = false
 var management_panel: PanelContainer
+var overlay_bar: HBoxContainer
+var controls_bar: HBoxContainer
 var management_toggle: Button
 var filter_button: Button
 var stock_status: Label
@@ -157,39 +159,40 @@ func button(parent: Node, value: String, action: Callable) -> Button:
 	return b
 
 func build_ui():
-	var outer = MarginContainer.new()
-	outer.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
-	for edge in ["left","right","top","bottom"]:
-		outer.add_theme_constant_override("margin_" + edge, 16)
-	add_child(outer)
-	var root = VBoxContainer.new()
-	root.add_theme_constant_override("separation", 10)
-	outer.add_child(root)
-	var header = HBoxContainer.new()
-	root.add_child(header)
-	var title = label(header, "MARKET EMPIRE", 26)
-	title.add_theme_color_override("font_color", Color("#dbe8fa"))
-	title.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	hud = label(header, "", 20)
-	var row = HBoxContainer.new()
-	row.size_flags_vertical = Control.SIZE_EXPAND_FILL
-	row.add_theme_constant_override("separation", 12)
-	root.add_child(row)
-	world = Control.new()
-	world.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	world.size_flags_vertical = Control.SIZE_EXPAND_FILL
-	world.clip_contents = true
-	
-	row.add_child(world)
-	visual = preload("res://store_visual.gd").new()
-	visual.game = self
+	world=Control.new()
+	add_child(world)
+	world.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	world.clip_contents=true
+	visual=preload("res://store_visual.gd").new()
+	visual.game=self
 	world.add_child(visual)
 	visual.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
-	var panel = PanelContainer.new()
+	overlay_bar=HBoxContainer.new()
+	add_child(overlay_bar)
+	overlay_bar.set_anchors_and_offsets_preset(Control.PRESET_TOP_WIDE)
+	overlay_bar.offset_left=12
+	overlay_bar.offset_right=-12
+	overlay_bar.offset_top=10
+	overlay_bar.add_theme_constant_override("separation",8)
+	hud=label(overlay_bar,"",17)
+	hud.add_theme_color_override("font_shadow_color",Color("#20232a"))
+	hud.add_theme_constant_override("shadow_offset_x",1)
+	hud.add_theme_constant_override("shadow_offset_y",2)
+	hud.size_flags_horizontal=Control.SIZE_EXPAND_FILL
+	open_button=button(overlay_bar,"",toggle_shop)
+	management_toggle=button(overlay_bar,"Покупки ▾",toggle_management)
+	button(overlay_bar,"Меню",show_menu)
+	var panel=PanelContainer.new()
 	management_panel=panel
-	panel.custom_minimum_size.x = 318
-	panel.add_theme_stylebox_override("panel", style(Color("#252c36")))
-	row.add_child(panel)
+	panel.custom_minimum_size.x=340
+	panel.add_theme_stylebox_override("panel",style(Color("#252c36")))
+	add_child(panel)
+	panel.set_anchors_and_offsets_preset(Control.PRESET_TOP_RIGHT)
+	panel.offset_left=-356
+	panel.offset_right=-12
+	panel.offset_top=55
+	panel.offset_bottom=475
+	panel.hide()
 	tabs = TabContainer.new()
 	tabs.add_theme_font_size_override("font_size", 13)
 	tabs.add_theme_stylebox_override("panel", style(Color("#1a2029")))
@@ -244,21 +247,31 @@ func build_ui():
 		button(price_row,"+",change_price.bind(i,1))
 	goals_label=label(side,"",13)
 	goals_label.autowrap_mode=TextServer.AUTOWRAP_WORD_SMART
-	var toolbar = HBoxContainer.new()
-	root.add_child(toolbar)
-	open_button = button(toolbar, "", toggle_shop)
-	button(toolbar, "Меню", show_menu)
-	management_toggle=button(toolbar,"Панель",toggle_management)
-	button(toolbar, "Сохр.", save_game)
-	button(toolbar, "−", func(): visual.zoom(1.15))
-	button(toolbar, "+", func(): visual.zoom(0.87))
-	button(toolbar, "Влево", func(): visual.rotate_view(-1))
-	button(toolbar, "Вправо", func(): visual.rotate_view(1))
-	button(toolbar, "Обзор", func(): visual.overview())
-	button(toolbar, "Сброс", func(): visual.reset_view())
-	hint = label(root, "", 16)
-	hint.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-	hint.custom_minimum_size.y = 42
+	controls_bar=HBoxContainer.new()
+	add_child(controls_bar)
+	controls_bar.set_anchors_and_offsets_preset(Control.PRESET_BOTTOM_RIGHT)
+	controls_bar.offset_left=-270
+	controls_bar.offset_right=-12
+	controls_bar.offset_top=-49
+	controls_bar.offset_bottom=-12
+	button(controls_bar,"−",func(): visual.zoom(1.15))
+	button(controls_bar,"+",func(): visual.zoom(0.87))
+	button(controls_bar,"↶",func(): visual.rotate_view(-1))
+	button(controls_bar,"↷",func(): visual.rotate_view(1))
+	button(controls_bar,"Обзор",func(): visual.overview())
+	hint=Label.new()
+	add_child(hint)
+	hint.set_anchors_and_offsets_preset(Control.PRESET_BOTTOM_WIDE)
+	hint.offset_left=12
+	hint.offset_right=-290
+	hint.offset_top=-74
+	hint.offset_bottom=-45
+	hint.mouse_filter=Control.MOUSE_FILTER_IGNORE
+	hint.add_theme_font_size_override("font_size",13)
+	hint.add_theme_color_override("font_shadow_color",Color("#20232a"))
+	hint.add_theme_constant_override("shadow_offset_x",1)
+	hint.add_theme_constant_override("shadow_offset_y",2)
+	hint.text_overrun_behavior=TextServer.OVERRUN_TRIM_ELLIPSIS
 
 func tab_page(title: String) -> VBoxContainer:
 	var scroll = ScrollContainer.new()
@@ -272,7 +285,7 @@ func tab_page(title: String) -> VBoxContainer:
 	return content
 
 func build_slot(i: int) -> Vector3:
-	return Vector3(5.9+(i%3)*2.7,0,-2.1+floori(i/3.0)*2.25+(2.2 if i>=12 else 0.0))
+	return Vector3(6.2+float(floori(i/6.0))*3.0,0,-2.8+float(i%6)*1.45)
 
 func cancel_build():
 	build_kind=-1
@@ -393,6 +406,8 @@ func expand_shelf(i: int):
 		refresh()
 		return
 	build_kind=i
+	management_panel.hide()
+	management_toggle.text="Покупки ▾"
 	message="Выберите свободную площадку справа от магазина."
 	refresh()
 
@@ -841,6 +856,8 @@ func show_menu():
 	subtitle.horizontal_alignment=HORIZONTAL_ALIGNMENT_CENTER
 	button(column,"Продолжить игру",func(): menu.hide())
 	button(column,"Как играть",show_help)
+	button(column,"Сохранить игру",save_game)
+	button(column,"Полноэкранный режим",toggle_fullscreen)
 	var quality_button=button(column,"Графика: высокое качество",func(): visual.toggle_quality())
 	quality_button.name="QualityButton"
 	quality_button.pressed.connect(func(): quality_button.text="Графика: высокое качество" if visual.quality_high else "Графика: стандартное качество")
@@ -1039,7 +1056,7 @@ func setup_music():
 
 func toggle_management():
 	management_panel.visible=not management_panel.visible
-	management_toggle.text="Панель" if management_panel.visible else "Управление"
+	management_toggle.text="Покупки ▴" if management_panel.visible else "Покупки ▾"
 
 func floor_area() -> int:
 	return 10+land_steps*2
@@ -1132,3 +1149,9 @@ func buy_district(i: int):
 	message="Открыта новая торговая точка."
 	refresh()
 	save_game()
+
+func toggle_fullscreen():
+	if DisplayServer.window_get_mode()==DisplayServer.WINDOW_MODE_FULLSCREEN:
+		DisplayServer.window_set_mode(DisplayServer.WINDOW_MODE_WINDOWED)
+	else:
+		DisplayServer.window_set_mode(DisplayServer.WINDOW_MODE_FULLSCREEN)
