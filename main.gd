@@ -25,6 +25,18 @@ var delivery: Array = [0,0,0]
 var shelf_levels: Array = [1,1,1]
 var placements: Array = [-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1]
 var area_level: int = 1
+var land_steps: int = 0
+var experience: int = 0
+var crossing_mode: int = 0
+var road_level: int = 1
+var signal_green: int = 12
+var street_queue: Array = []
+var street_lost: int = 0
+var street_label: Label
+var road_button: Button
+var bridge_button: Button
+var tunnel_button: Button
+var signal_button: Button
 const LAND_PRICES = [450, 900, 1500]
 var parking_button: Button
 var parking_owned: bool = false
@@ -188,6 +200,13 @@ func build_ui():
 	button(side, "Расширить склад · 180 мон.", expand_warehouse)
 	area_button=button(side,"",expand_area)
 	parking_button=button(side,"",buy_parking)
+	label(side,"ГОРОДСКАЯ ИНФРАСТРУКТУРА",14)
+	street_label=label(side,"",13)
+	street_label.autowrap_mode=TextServer.AUTOWRAP_WORD_SMART
+	road_button=button(side,"",upgrade_road)
+	bridge_button=button(side,"",buy_crossing.bind(1))
+	tunnel_button=button(side,"",buy_crossing.bind(2))
+	signal_button=button(side,"",adjust_signal)
 	side = tab_page("Штат")
 	label(side, "ПЕРСОНАЛ", 15)
 	for i in range(3):
@@ -255,7 +274,7 @@ func place_equipment(slot: int):
 	expenses+=cost
 	placements[slot]=i
 	shelf_levels[i]+=1
-	level+=1
+	gain_xp(12)
 	build_kind=-1
 	message="Оборудование установлено: "+GOODS[i]
 	refresh()
@@ -269,6 +288,7 @@ func expand_warehouse():
 	cash-=180
 	expenses+=180
 	warehouse_level+=1
+	gain_xp(15)
 	message="Склад расширен."
 	refresh()
 	save_game()
@@ -287,7 +307,7 @@ func refresh_finance():
 	goals_label.text="Достижения: %d/5\n" % rewards.size()+"ЦЕЛИ\n%s  Продать 50 товаров (%d/50)\n%s  Нанять грузчика\n%s  Построить 3 новых полки" % ["✓" if sold>=50 else "○",mini(sold,50),"✓" if loaders>0 else "○","✓" if level>=4 else "○"]
 
 func refresh():
-	hud.text = "Баланс %d мон.   Ур. %d   Продано %d" % [cash, level, sold]
+	hud.text = "%s · %d м² · Ур. %d · %d мон." % [business_name(),floor_area(),level,cash]
 	filter_button.text="Показать все товары" if not show_locked else "Только открытые товары"
 	for i in range(GOODS.size()):
 		shop_rows[i].visible=show_locked or shelf_levels[i]>0
@@ -304,8 +324,17 @@ func refresh():
 	for i in range(3):
 		staff_buttons[i].text = "%s %d/3 · нанять %d" % [names[i],counts[i],role_cost(i)]
 		staff_buttons[i].disabled = counts[i]>=3 or cash<role_cost(i)
-	area_button.text="Купить участок %d · %d мон." % [area_level, LAND_PRICES[mini(area_level-1,2)]] if area_level<4 else "Все торговые участки куплены"
-	area_button.disabled=area_level>=4 or cash<LAND_PRICES[mini(area_level-1,2)]
+	area_button.text="Расширить на 2 м² · %d мон." % land_cost() if land_steps<18 else "Достигнут предел текущей карты"
+	area_button.disabled=land_steps>=18 or cash<land_cost()
+	road_button.text="Расширить дорогу до 4 полос · 650 мон." if road_level==1 else "Расширить дорогу до 6 полос · 1200 мон." if road_level==2 else "Дорога: 6 полос"
+	road_button.disabled=road_level>=3 or cash<road_cost()
+	bridge_button.text="Надземный переход · 900 мон." if crossing_mode!=1 else "Надземный переход построен"
+	bridge_button.disabled=crossing_mode==1 or cash<900
+	tunnel_button.text="Подземный переход · 1400 мон." if crossing_mode!=2 else "Подземный переход построен"
+	tunnel_button.disabled=crossing_mode==2 or cash<1400
+	signal_button.text="Светофор: %d сек. · изменить" % signal_green
+	signal_button.disabled=crossing_mode!=0
+	refresh_street()
 	parking_button.text="Парковка куплена" if parking_owned else "Купить парковку · 350 мон."
 	parking_button.disabled=parking_owned or cash<350
 	promo_button.text="Реклама: %d сек." % ceili(promo_left) if promo_left>0 else "Реклама · 60 мон. / 45 сек."
@@ -456,9 +485,10 @@ func _process(delta):
 			refresh()
 			save_game()
 		elapsed += delta
-		if running and elapsed>=maxf(1.8,6.0-workers*0.6+dirt*0.04-reputation*0.018-(1.4 if promo_left>0 else 0.0)-(0.65 if parking_owned else 0.0)) and customers.size()<6:
+		if running and elapsed>=maxf(1.8,6.0-workers*0.6+dirt*0.04-reputation*0.018-(1.4 if promo_left>0 else 0.0)-(0.65 if parking_owned else 0.0)) and street_queue.size()<18:
 			elapsed = 0
-			customers.append({"pos":Vector3(-4.1,0,5.1),"phase":0,"item":choose_product(),"timer":0.0,"carry":false,"counter":-1})
+			street_queue.append({"wait":0.0,"patience":rng.randf_range(9.0,26.0),"pos":Vector3(-3.4,0,27.0)})
+	update_street(delta)
 	for c in customers:
 		if c["phase"]==0:
 			var q = customers.find(c)
@@ -555,6 +585,7 @@ func service(s: Dictionary, i: int, delta: float):
 				cost_of_sales+=unit_cost
 				play_sound()
 				sold+=1
+				gain_xp(3)
 				reputation=minf(100,reputation+0.7)
 				payment_events.append({"pos":counter(i),"amount":prices[item]})
 				dirt=minf(100,dirt+2)
@@ -650,7 +681,7 @@ func save_game():
 			saved_storage[i]+=task["amount"]
 	var f=FileAccess.open(SAVE_PATH,FileAccess.WRITE)
 	if f:
-		f.store_string(JSON.stringify({"version":7,"music_enabled":music_enabled,"area_level":area_level,"parking_owned":parking_owned,"reputation":reputation,"promo_left":promo_left,"delivery_duration":delivery_duration,"supplier":supplier,"muted":muted,"rewards":rewards,"inventory_cost":inventory_cost,"prices":prices,"expenses":expenses,"cost_of_sales":cost_of_sales,"lost_sales":lost_sales,"day_number":day_number,"day_clock":day_clock,"placements":placements,"warehouse_level":warehouse_level,"incoming":incoming,"delivery_eta":delivery_eta,"cash":cash,"stock":saved_stock,"storage":saved_storage,"delivery":saved_delivery,"shelf_levels":shelf_levels,"level":level,"sold":sold,"revenue":revenue,"workers":workers,"loaders":loaders,"cleaners":cleaners,"dirt":dirt}))
+		f.store_string(JSON.stringify({"version":8,"land_steps":land_steps,"experience":experience,"road_level":road_level,"crossing_mode":crossing_mode,"signal_green":signal_green,"street_lost":street_lost,"music_enabled":music_enabled,"area_level":area_level,"parking_owned":parking_owned,"reputation":reputation,"promo_left":promo_left,"delivery_duration":delivery_duration,"supplier":supplier,"muted":muted,"rewards":rewards,"inventory_cost":inventory_cost,"prices":prices,"expenses":expenses,"cost_of_sales":cost_of_sales,"lost_sales":lost_sales,"day_number":day_number,"day_clock":day_clock,"placements":placements,"warehouse_level":warehouse_level,"incoming":incoming,"delivery_eta":delivery_eta,"cash":cash,"stock":saved_stock,"storage":saved_storage,"delivery":saved_delivery,"shelf_levels":shelf_levels,"level":level,"sold":sold,"revenue":revenue,"workers":workers,"loaders":loaders,"cleaners":cleaners,"dirt":dirt}))
 
 func load_game():
 	if not FileAccess.file_exists(SAVE_PATH):
@@ -666,6 +697,12 @@ func load_game():
 	level=maxi(1,int(data.get("level",1)))
 	area_level=clampi(int(data.get("area_level",1)),1,4)
 	parking_owned=bool(data.get("parking_owned",false))
+	land_steps=clampi(int(data.get("land_steps",(area_level-1)*6)),0,18)
+	experience=maxi(0,int(data.get("experience",0)))
+	road_level=clampi(int(data.get("road_level",1)),1,3)
+	crossing_mode=clampi(int(data.get("crossing_mode",0)),0,2)
+	signal_green=clampi(int(data.get("signal_green",12)),6,18)
+	street_lost=maxi(0,int(data.get("street_lost",0)))
 	reputation=clampf(float(data.get("reputation",60)),0,100)
 	promo_left=clampf(float(data.get("promo_left",0)),0,45)
 	delivery_duration=maxf(1,float(data.get("delivery_duration",6)))
@@ -825,7 +862,7 @@ func sum_items(values: Array) -> int:
 	return total
 
 func active_slots() -> int:
-	return area_level*6
+	return mini(24,6+land_steps)
 
 func active_products() -> Array:
 	var result=[]
@@ -848,15 +885,15 @@ func equipment_cost(i: int) -> int:
 	return 150*maxi(1,shelf_levels[i]) if i<3 else 180+50*shelf_levels[i]
 
 func expand_area():
-	if area_level>=4:
+	if land_steps>=18 or cash<land_cost():
 		return
-	var cost: int=LAND_PRICES[area_level-1]
-	if cash<cost:
-		return
-	area_level+=1
+	var cost: int=land_cost()
+	land_steps+=1
+	area_level=1+ceili(float(land_steps)/6.0)
 	cash-=cost
 	expenses+=cost
-	message="Участок куплен: ещё 6 площадок!"
+	gain_xp(18)
+	message="Куплено 2 м² и открыто новое место для оборудования."
 	refresh()
 	save_game()
 
@@ -952,3 +989,77 @@ func setup_music():
 func toggle_management():
 	management_panel.visible=not management_panel.visible
 	management_toggle.text="Панель" if management_panel.visible else "Управление"
+
+func floor_area() -> int:
+	return 10+land_steps*2
+
+func business_name() -> String:
+	if level>=30 and floor_area()>=40:
+		return "Мини-маркет"
+	if level>=10 and floor_area()>=20:
+		return "Магазин"
+	return "Ларёк"
+
+func gain_xp(amount: int):
+	experience+=amount
+	while experience>=20+level*3:
+		experience-=20+level*3
+		level+=1
+
+func land_cost() -> int:
+	return 80+land_steps*22
+
+func road_cost() -> int:
+	return 650 if road_level==1 else 1200
+
+func upgrade_road():
+	if road_level>=3 or cash<road_cost():
+		return
+	var cost: int=road_cost()
+	cash-=cost
+	expenses+=cost
+	road_level+=1
+	gain_xp(20)
+	message="Дорога расширена. Следите за очередью пешеходов."
+	refresh()
+	save_game()
+
+func buy_crossing(kind: int):
+	var cost: int=900 if kind==1 else 1400
+	if crossing_mode==kind or cash<cost:
+		return
+	cash-=cost
+	expenses+=cost
+	crossing_mode=kind
+	gain_xp(25)
+	message="Пешеходы теперь могут перейти дорогу без ожидания светофора."
+	refresh()
+	save_game()
+
+func adjust_signal():
+	signal_green=6 if signal_green>=18 else signal_green+3
+	refresh()
+	save_game()
+
+func refresh_street():
+	if street_label!=null:
+		street_label.text="Ожидают перехода: %d | Ушли: %d | Полос: %d" % [street_queue.size(),street_lost,road_level*2]
+
+func update_street(delta: float):
+	for i in range(street_queue.size()-1,-1,-1):
+		var p: Dictionary=street_queue[i]
+		p["wait"]+=delta
+		if p["wait"]>p["patience"]:
+			street_queue.remove_at(i)
+			street_lost+=1
+	for i in range(street_queue.size()):
+		var p: Dictionary=street_queue[i]
+		p["pos"]=Vector3(-3.4+(i%4-1.5)*0.63,0,25.9+floori(i/4.0)*0.7+float(road_level-1)*2.6)
+	if running and not street_queue.is_empty() and customers.size()<6 and visual.crossing_open():
+		var p: Dictionary=street_queue[0]
+		var duration: float=1.0 if crossing_mode!=0 else 2.0+road_level*0.7
+		p["cross_time"]=float(p.get("cross_time",0.0))+delta
+		if p["cross_time"]>=duration:
+			street_queue.pop_front()
+			customers.append({"pos":Vector3(-4.1,0,5.1),"phase":0,"item":choose_product(),"timer":0.0,"carry":false,"counter":-1})
+	refresh_street()

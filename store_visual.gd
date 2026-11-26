@@ -38,7 +38,16 @@ var parking: Node3D
 var parking_sign: Node3D
 var traffic: Array[Node3D] = []
 var traffic_rng := RandomNumberGenerator.new()
-var traffic_timers: Array[float] = [0.2, 1.1]
+var traffic_timers: Array[float] = [0.2, 1.1, 0.7, 1.8, 2.4, 3.1]
+var road_parts: Array[Node3D] = []
+var cross_roots: Array[Node3D] = []
+var signal_lamps: Array[MeshInstance3D] = []
+var street_people: Array[Node3D] = []
+var signal_phase: int = 0
+var signal_time: float = 0.0
+var last_road: int = 0
+var last_cross: int = -1
+const CROSS_X: float = -3.4
 var traffic_speeds: Dictionary = {}
 var built_racks: Array = []
 var built_items: Array = []
@@ -69,12 +78,12 @@ func _ready():
 	e.background_color = Color("#a9c4cd")
 	e.ambient_light_source = Environment.AMBIENT_SOURCE_COLOR
 	e.ambient_light_color = Color("#c4d5d4")
-	e.ambient_light_energy = 0.72
+	e.ambient_light_energy = 0.65
 	env.environment = e
 	stage.add_child(env)
 	var light = DirectionalLight3D.new()
 	light.rotation_degrees = Vector3(-57,-38,0)
-	light.light_energy = 1.05
+	light.light_energy = 1.15
 	scene_light=light
 	light.shadow_enabled = true
 	light.directional_shadow_max_distance=30.0
@@ -94,6 +103,7 @@ func _ready():
 	add_details()
 	add_landscaping()
 	build_city()
+	build_infrastructure()
 	add_merchandising()
 	reset_view()
 	print("Market assets loaded: ",asset_library.catalog.get("market",{}).size())
@@ -183,7 +193,7 @@ func mat(color: Color) -> StandardMaterial3D:
 		return materials[color]
 	var m = StandardMaterial3D.new()
 	m.albedo_color = color
-	m.roughness = 0.82
+	m.roughness = 0.67
 	materials[color]=m
 	return m
 
@@ -572,6 +582,7 @@ func _process(delta):
 		land_signs[i].visible=not land_wings[i].visible
 	parking.visible=game.parking_owned
 	parking_sign.visible=not game.parking_owned
+	update_infrastructure(delta)
 	update_traffic(delta)
 	for i in range(24):
 		var kind: int=game.placements[i]
@@ -652,7 +663,7 @@ func _process(delta):
 		actor(people[i],c["pos"],c["carry"],delta)
 		var tag: Label3D=people[i].get_meta("order")
 		tag.text=game.GOODS[c["item"]] if c["phase"]<4 and not c["carry"] else ("Оплата" if c["carry"] and c["phase"]<4 else "")
-	status_label.text=("МАГАЗИН ОТКРЫТ" if game.running else "МАГАЗИН ЗАКРЫТ")+" | V12 • 3D: %d / резерв: %d" % [asset_library.loaded_count,asset_library.fallback_count]
+	status_label.text=("МАГАЗИН ОТКРЫТ" if game.running else "МАГАЗИН ЗАКРЫТ")+" | V13 • 3D: %d / резерв: %d" % [asset_library.loaded_count,asset_library.fallback_count]
 	sales_label.position=Vector2(12,size.y-28)
 	sales_label.text="Выручка: %d мон. | Клиентов: %d" % [game.revenue,game.customers.size()]
 
@@ -714,7 +725,7 @@ void fragment(){
  float edge=min(min(uv.x,1.0-uv.x),min(uv.y,1.0-uv.y));
  float grout=smoothstep(0.012,0.028,edge);
  float variation=fract(sin(dot(cell,vec2(12.9898,78.233)))*43758.5453);
- float grain=0.0;
+ float grain=(fract(sin(dot(floor(coord*90.0),vec2(12.9898,78.233)))*43758.5453)-0.5)*0.07;
  vec3 tile_color=tint*(0.92+variation*0.10+grain);
  ALBEDO=mix(tint*0.60,tile_color,grout);
  ROUGHNESS=0.86;
@@ -775,7 +786,7 @@ func build_city():
 		box(stage,Vector3(x,2.95,16.65),Vector3(0.18,0.12,0.65),metal)
 		box(stage,Vector3(x,2.89,16.86),Vector3(0.16,0.035,0.24),Color("#fff1c8"))
 	traffic_rng.randomize()
-	for i in range(12):
+	for i in range(24):
 		var car=Node3D.new()
 		stage.add_child(car)
 		car.position=Vector3(-24,-0.3,20.85)
@@ -816,11 +827,11 @@ func build_city():
 
 # Independent arrival clocks for each lane; following cars keep a safe gap.
 func update_traffic(delta: float):
-	for lane in range(2):
-		var direction: float=1.0 if lane==0 else -1.0
-		var lane_z: float=20.85 if lane==0 else 18.15
-		var entry: float=-19.0 if lane==0 else 23.0
-		var exit: float=23.0 if lane==0 else -19.0
+	for lane in range(game.road_level*2):
+		var direction: float=1.0 if lane%2==0 else -1.0
+		var lane_z: float=20.85+floori(lane/2.0)*2.7 if lane%2==0 else 18.15-floori(lane/2.0)*2.7
+		var entry: float=-19.0 if direction>0 else 23.0
+		var exit: float=23.0 if direction>0 else -19.0
 		var moving: Array[Node3D]=[]
 		for car in traffic:
 			if car.visible and int(car.get_meta("lane",-1))==lane:
@@ -831,6 +842,9 @@ func update_traffic(delta: float):
 			var progress: float=car.position.x*direction
 			var advance: float=float(traffic_speeds[car])*delta
 			var next: float=minf(progress+advance,front-4.8)
+			var stop_at: float=CROSS_X*direction-3.3
+			if game.crossing_mode==0 and signal_phase!=0 and progress<=stop_at:
+				next=minf(next,stop_at)
 			car.position.x=maxf(progress,next)*direction
 			if car.position.x*direction>=exit*direction:
 				car.hide()
@@ -853,7 +867,105 @@ func update_traffic(delta: float):
 		var car: Node3D=available[traffic_rng.randi_range(0,available.size()-1)]
 		car.set_meta("lane",lane)
 		car.position=Vector3(entry,-0.3,lane_z)
-		car.rotation.y=0.0 if lane==0 else PI
+		car.rotation.y=0.0 if direction>0 else PI
 		traffic_speeds[car]=traffic_rng.randf_range(2.7,6.0)
 		car.show()
 		traffic_timers[lane]=traffic_rng.randf_range(1.4,7.5)
+
+func crossing_open() -> bool:
+	return game.crossing_mode!=0 or signal_phase==3
+
+func build_infrastructure():
+	var asphalt=Color("#485459")
+	var white=Color("#f6f2e9")
+	var steel=Color("#536a73")
+	for tier in range(3):
+		var root=Node3D.new()
+		stage.add_child(root)
+		if tier>0:
+			for side in [-1,1]:
+				var z: float=19.5+side*(1.35+tier*2.7)
+				box(root,Vector3(2,-0.43,z),Vector3(42,0.13,2.7),asphalt)
+				for j in range(22):
+					box(root,Vector3(-18+j*1.8,-0.35,z-side*1.35),Vector3(0.9,0.025,0.07),white)
+		road_parts.append(root)
+	for mode in range(3):
+		var root=Node3D.new()
+		stage.add_child(root)
+		cross_roots.append(root)
+		if mode==0:
+			for j in range(27):
+				box(root,Vector3(CROSS_X,-0.348,11.7+j*0.6),Vector3(2.4,0.015,0.28),white)
+			for side in [-1,1]:
+				var x: float=CROSS_X+side*2.1
+				var z: float=19.5+side*7.9
+				cylinder(root,Vector3(x,1.2,z),0.08,3.0,steel)
+				var head=Node3D.new()
+				root.add_child(head)
+				head.position=Vector3(x,2.5,z)
+				head.rotation.y=PI/2 if side==1 else -PI/2
+				box(head,Vector3.ZERO,Vector3(0.42,1.05,0.27),Color("#273136"))
+				for j in range(3):
+					var lamp=ball(head,Vector3(0,0.32-j*0.32,0.15),Vector3(0.22,0.22,0.08),white)
+					lamp.material_override=StandardMaterial3D.new()
+					signal_lamps.append(lamp)
+		elif mode==1:
+			box(root,Vector3(CROSS_X,3.3,19.5),Vector3(2.6,0.28,17.0),steel)
+			for x in [-4.65,-2.15]:
+				box(root,Vector3(x,3.95,19.5),Vector3(0.08,1.0,17.0),Color("#94c5d1"))
+			for side in [-1,1]:
+				for j in range(14):
+					box(root,Vector3(CROSS_X,0.12+j*0.23,19.5+side*(11.3-j*0.25)),Vector3(2.4,0.24,0.32),steel)
+				box(root,Vector3(CROSS_X,1.5,19.5+side*8.2),Vector3(0.22,3.0,0.22),steel)
+		else:
+			for side in [-1,1]:
+				var z: float=19.5+side*9.2
+				box(root,Vector3(CROSS_X,0.04,z),Vector3(3.0,0.22,2.7),Color("#273d47"))
+				for x in [-4.85,-1.95]:
+					box(root,Vector3(x,0.55,z),Vector3(0.18,1.2,2.7),steel)
+				sign_text(root,Vector3(CROSS_X,1.25,z),"ПОДЗЕМНЫЙ",white,0.006)
+
+func update_infrastructure(delta: float):
+	if last_road!=game.road_level or last_cross!=game.crossing_mode:
+		last_road=game.road_level
+		last_cross=game.crossing_mode
+		for i in range(road_parts.size()):
+			road_parts[i].visible=i<last_road
+		for i in range(cross_roots.size()):
+			cross_roots[i].visible=i==last_cross
+	signal_time+=delta
+	if signal_phase==0 and signal_time>=game.signal_green:
+		signal_phase=1
+		signal_time=0.0
+	elif signal_phase==1 and signal_time>=2.0:
+		signal_phase=2
+		signal_time=0.0
+	elif signal_phase==2:
+		var clear: bool=true
+		for car in traffic:
+			if car.visible and absf(car.position.x-CROSS_X)<3.2:
+				clear=false
+		if clear and signal_time>=1.0:
+			signal_phase=3
+			signal_time=0.0
+	elif signal_phase==3 and signal_time>=6.0+game.road_level*2.0:
+		signal_phase=0
+		signal_time=0.0
+	var colors: Array[Color]=[Color("#ff3636"),Color("#ffc238"),Color("#4bec80")]
+	for i in range(signal_lamps.size()):
+		var j: int=i%3
+		var on: bool=(signal_phase==0 and j==2) or (signal_phase==1 and j==1) or (signal_phase>=2 and j==0)
+		var material: StandardMaterial3D=signal_lamps[i].material_override
+		material.albedo_color=colors[j] if on else colors[j].darkened(0.8)
+		material.emission_enabled=on
+		material.emission=colors[j]
+	while street_people.size()<game.street_queue.size():
+		var p=person(Color("#6b93b7"))
+		add_carry(p)
+		street_people.append(p)
+	while street_people.size()>game.street_queue.size():
+		street_people.pop_back().queue_free()
+	for i in range(street_people.size()):
+		var p: Dictionary=game.street_queue[i]
+		var target: Vector3=p["pos"]
+		actor(street_people[i],target,false,delta)
