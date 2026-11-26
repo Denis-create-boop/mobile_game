@@ -68,6 +68,8 @@ var camera_zoom: float = 16.5
 var popups: Array = []
 var last_placements: Array = []
 var mouse_down := Vector2.ZERO
+var pointer_travel: float = 0.0
+var last_build_kind: int = -1
 var status_label: Label
 var sales_label: Label
 
@@ -162,7 +164,7 @@ func zoom(factor: float):
 	zoom_goal=clampf(zoom_goal*factor,4.5,42.0)
 
 func rotate_view(direction: int):
-	orbit=clampf(orbit+direction*0.35,-0.45,1.45)
+	orbit=wrapf(orbit+direction*0.35,-PI,PI)
 	update_camera()
 
 func update_camera():
@@ -170,14 +172,32 @@ func update_camera():
 	var target=focus
 	camera.look_at_from_position(target+Vector3(sin(orbit)*17,14,cos(orbit)*17),target)
 
+func pan_map(relative: Vector2):
+	if camera==null or size.y<2:
+		return
+	var right: Vector3=camera.global_transform.basis.x
+	var up: Vector3=camera.global_transform.basis.y
+	right.y=0
+	up.y=0
+	var units: float=camera_zoom/size.y
+	var offset: Vector3=(-right.normalized()*relative.x+up.normalized()*relative.y)*units
+	focus_goal+=offset
+	focus_goal.x=clampf(focus_goal.x,-32.0,42.0)
+	focus_goal.z=clampf(focus_goal.z,-32.0,36.0)
+	focus=focus_goal
+	update_camera()
+
 func _gui_input(event):
-	if event is InputEventMouseMotion and (event.button_mask & MOUSE_BUTTON_MASK_LEFT)!=0 and game.build_kind<0:
-		orbit=clampf(orbit-event.relative.x*0.004,-0.45,1.45)
-		update_camera()
-	elif event is InputEventScreenDrag and game.build_kind<0:
-		orbit=clampf(orbit-event.relative.x*0.004,-0.45,1.45)
-		update_camera()
-	if event is InputEventMouseButton:
+	if event is InputEventMouseMotion:
+		if (event.button_mask & MOUSE_BUTTON_MASK_RIGHT)!=0:
+			orbit=wrapf(orbit-event.relative.x*0.004,-PI,PI)
+			update_camera()
+			accept_event()
+		elif (event.button_mask & MOUSE_BUTTON_MASK_LEFT)!=0 or (event.button_mask & MOUSE_BUTTON_MASK_MIDDLE)!=0:
+			pointer_travel+=event.relative.length()
+			pan_map(event.relative)
+			accept_event()
+	elif event is InputEventMouseButton:
 		if event.pressed and event.button_index==MOUSE_BUTTON_WHEEL_UP:
 			zoom(0.9)
 		elif event.pressed and event.button_index==MOUSE_BUTTON_WHEEL_DOWN:
@@ -185,13 +205,21 @@ func _gui_input(event):
 		elif event.button_index==MOUSE_BUTTON_LEFT:
 			if event.pressed:
 				mouse_down=event.position
-			elif mouse_down.distance_to(event.position)<12:
+				pointer_travel=0.0
+			elif pointer_travel<8.0 and mouse_down.distance_to(event.position)<8.0:
 				select_pad(event.position)
+		accept_event()
+	elif event is InputEventScreenDrag:
+		pointer_travel+=event.relative.length()
+		pan_map(event.relative)
+		accept_event()
 	elif event is InputEventScreenTouch:
 		if event.pressed:
 			mouse_down=event.position
-		elif mouse_down.distance_to(event.position)<12:
+			pointer_travel=0.0
+		elif pointer_travel<8.0 and mouse_down.distance_to(event.position)<8.0:
 			select_pad(event.position)
+		accept_event()
 
 func select_pad(pos: Vector2):
 	if game.build_kind<0 or camera==null:
@@ -592,12 +620,11 @@ func _process(delta):
 	if resize_clock>=0.20:
 		resize_clock=0.0
 		update_render_resolution()
-	if game.build_kind>=0:
-		focus_goal=Vector3(8.4,0.5,float(game.area_level-1)*2.5)
-		zoom_goal=maxf(zoom_goal,11.5+float(game.area_level-1)*4.0)
-	elif focus_goal.x>5:
-		focus_goal=Vector3(0,0.5,0)
-		zoom_goal=10.8
+	if game.build_kind!=last_build_kind:
+		last_build_kind=game.build_kind
+		if game.build_kind>=0:
+			focus_goal=Vector3(8.4,0.5,float(game.area_level-1)*2.5)
+			zoom_goal=maxf(zoom_goal,11.5+float(game.area_level-1)*4.0)
 	focus=focus.lerp(focus_goal,minf(1,delta*4))
 	camera_zoom=lerpf(camera_zoom,zoom_goal,minf(1,delta*6))
 	update_camera()
@@ -706,7 +733,7 @@ func _process(delta):
 		actor(people[i],c["pos"],c["carry"],delta)
 		var tag: Label3D=people[i].get_meta("order")
 		tag.text=game.GOODS[c["item"]] if c["phase"]<4 and not c["carry"] else ("Оплата" if c["carry"] and c["phase"]<4 else "")
-	status_label.text=("МАГАЗИН ОТКРЫТ" if game.running else "МАГАЗИН ЗАКРЫТ")+" | V17 • 3D: %d / резерв: %d" % [asset_library.loaded_count,asset_library.fallback_count]
+	status_label.text=("МАГАЗИН ОТКРЫТ" if game.running else "МАГАЗИН ЗАКРЫТ")+" | V18 • 3D: %d / резерв: %d" % [asset_library.loaded_count,asset_library.fallback_count]
 	sales_label.position=Vector2(12,size.y-26)
 	sales_label.text="Выручка: %d мон. | Клиентов: %d" % [game.revenue,game.customers.size()]
 
