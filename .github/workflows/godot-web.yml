@@ -38,10 +38,12 @@ jobs:
           if grep -E 'SCRIPT ERROR|Parse Error|Failed to load script' /tmp/smoke.log; then exit 1; fi
       - name: Export Web
         run: |
-          mkdir -p build/web
-          godot --headless --path . --export-release Web build/web/index.html
-          test -s build/web/index.html
-          test -s build/web/index.wasm
+          release="build/web/release-${GITHUB_SHA:0:12}"
+          mkdir -p "$release"
+          godot --headless --path . --export-release Web "$release/index.html"
+          test -s "$release/index.html"
+          test -s "$release/index.wasm"
+          printf '<!doctype html><meta charset="utf-8"><meta http-equiv="refresh" content="0;url=release-%s/"><a href="release-%s/">Open Market Empire</a>' "${GITHUB_SHA:0:12}" "${GITHUB_SHA:0:12}" > build/web/index.html
       - uses: actions/upload-artifact@v4
         with:
           name: market-empire-web
