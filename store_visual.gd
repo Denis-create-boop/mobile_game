@@ -1,9 +1,9 @@
-extends SubViewportContainer
+extends Control
 
 var game
 var asset_library=preload("res://asset_library.gd").new()
 var character_serial: int=0
-var viewport: SubViewport
+var viewport: Viewport
 var stage: Node3D
 var camera: Camera3D
 var products: Array = []
@@ -75,18 +75,10 @@ var sales_label: Label
 
 func _ready():
 	mouse_filter = Control.MOUSE_FILTER_STOP
-	stretch=true
-	stretch_shrink=1
-	viewport = SubViewport.new()
-	viewport.size = Vector2i(960,640)
-	viewport.own_world_3d = true
-	viewport.disable_3d=false
-	viewport.transparent_bg=false
-	viewport.msaa_3d = Viewport.MSAA_DISABLED if OS.has_feature("web") else Viewport.MSAA_2X
-	viewport.render_target_update_mode = SubViewport.UPDATE_ALWAYS
-	add_child(viewport)
-	stage = Node3D.new()
-	viewport.add_child(stage)
+	viewport=get_viewport()
+	viewport.msaa_3d=Viewport.MSAA_DISABLED
+	stage=Node3D.new()
+	add_child(stage)
 	var env = WorldEnvironment.new()
 	var e = Environment.new()
 	e.background_mode = Environment.BG_COLOR
@@ -169,8 +161,11 @@ func rotate_view(direction: int):
 
 func update_camera():
 	camera.size=camera_zoom
+	camera.near=0.2
+	camera.far=150.0
 	var target=focus
-	camera.look_at_from_position(target+Vector3(sin(orbit)*17,21,cos(orbit)*17),target)
+	camera.global_position=target+Vector3(sin(orbit)*17,21,cos(orbit)*17)
+	camera.look_at(target,Vector3.UP)
 
 func pan_map(relative: Vector2):
 	if camera==null or size.y<2:
@@ -224,7 +219,7 @@ func _gui_input(event):
 func select_pad(pos: Vector2):
 	if game.build_kind<0 or camera==null:
 		return
-	var pixel=pos*Vector2(viewport.size)/size
+	var pixel=get_global_transform_with_canvas()*pos
 	var origin=camera.project_ray_origin(pixel)
 	var direction=camera.project_ray_normal(pixel)
 	if absf(direction.y)<0.001:
@@ -681,7 +676,7 @@ func _process(delta):
 		actor(people[i],c["pos"],c["carry"],delta)
 		var tag: Label3D=people[i].get_meta("order")
 		tag.text=game.GOODS[c["item"]] if c["phase"]<4 and not c["carry"] else ("Оплата" if c["carry"] and c["phase"]<4 else "")
-	status_label.text=("МАГАЗИН ОТКРЫТ" if game.running else "МАГАЗИН ЗАКРЫТ")+" | V23 • 3D: %d / резерв: %d" % [asset_library.loaded_count,asset_library.fallback_count]
+	status_label.text=("МАГАЗИН ОТКРЫТ" if game.running else "МАГАЗИН ЗАКРЫТ")+" | V24 • 3D: %d / резерв: %d" % [asset_library.loaded_count,asset_library.fallback_count]
 	sales_label.position=Vector2(12,size.y-26)
 	sales_label.text="Выручка: %d мон. | Клиентов: %d" % [game.revenue,game.customers.size()]
 
@@ -1076,17 +1071,15 @@ func build_architecture():
 
 # Match the actual screen-space rectangle, including window stretch and high-DPI.
 func update_render_resolution():
-	if viewport==null:
+	if not is_instance_valid(camera):
 		return
-	# Container owns the render dimensions and maps pointer coordinates.
-	stretch_shrink=1 if quality_high else 2
-	viewport.render_target_update_mode=SubViewport.UPDATE_ALWAYS
+	if viewport.get_camera_3d()!=camera:
+		camera.make_current()
 
 func ensure_camera():
 	if not is_instance_valid(camera):
 		return
 	camera.make_current()
-	viewport.render_target_update_mode=SubViewport.UPDATE_ALWAYS
 	update_camera()
 
 # Retail materials: reusable brushed metal, satin wood and transparent glazing.
