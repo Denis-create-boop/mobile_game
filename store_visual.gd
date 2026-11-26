@@ -58,15 +58,15 @@ func _ready():
 	var env = WorldEnvironment.new()
 	var e = Environment.new()
 	e.background_mode = Environment.BG_COLOR
-	e.background_color = Color("#718b91")
+	e.background_color = Color("#a9c4cd")
 	e.ambient_light_source = Environment.AMBIENT_SOURCE_COLOR
 	e.ambient_light_color = Color("#c4d5d4")
-	e.ambient_light_energy = 0.35
+	e.ambient_light_energy = 0.48
 	env.environment = e
 	stage.add_child(env)
 	var light = DirectionalLight3D.new()
 	light.rotation_degrees = Vector3(-57,-38,0)
-	light.light_energy = 0.65
+	light.light_energy = 0.82
 	scene_light=light
 	light.shadow_enabled = true
 	light.directional_shadow_max_distance=30.0
@@ -85,6 +85,7 @@ func _ready():
 	decorate_store()
 	add_details()
 	add_landscaping()
+	add_merchandising()
 	reset_view()
 	status_label = Label.new()
 	status_label.position = Vector2(12,8)
@@ -107,8 +108,8 @@ func _ready():
 
 func reset_view():
 	orbit=0.70
-	camera_zoom=12.2
-	zoom_goal=12.2
+	camera_zoom=10.5
+	zoom_goal=10.5
 	focus=Vector3(-0.5,0.5,0.3)
 	focus_goal=focus
 	update_camera()
@@ -452,7 +453,7 @@ func person(color: Color) -> Node3D:
 	var names: Array=[]
 	var entries: Dictionary=asset_library.catalog.get("people",{})
 	for key in entries:
-		if not String(key).contains("wheelchair"):
+		if not String(key).contains("wheelchair") and not String(key).contains("skeleton") and not String(key).contains("animation"):
 			names.append(key)
 	if not names.is_empty():
 		var model=asset_library.spawn("people",[names[character_serial%names.size()]],p,Vector3.ZERO,Vector3(0.70,1.46,0.66))
@@ -576,7 +577,7 @@ func _process(delta):
 		if i<game.sellers.size():
 			var s=game.sellers[i]
 			actor(employees[i],s["pos"],s["carry"],delta)
-		delivery_boxes[i].visible=game.delivery[0]+game.delivery[1]+game.delivery[2]>i*5
+		delivery_boxes[i].visible=game.sum_items(game.delivery)>i*5
 	for i in range(crates.size()):
 		crates[i].visible=game.sum_items(game.storage)>i*4
 	for i in range(dirt_marks.size()):
@@ -700,3 +701,25 @@ func add_landscaping():
 	box(stage,Vector3(-0.8,0.28,4.12),Vector3(1.7,0.13,0.42),Color("#a8794b"))
 	for x in [-1.5,-0.1]:
 		box(stage,Vector3(x,0.03,4.12),Vector3(0.1,0.45,0.35),Color("#39494c"))
+
+
+func add_merchandising():
+	var teal=Color("#225d57")
+	var ivory=Color("#fff0d4")
+	var accent=Color("#e6a64e")
+	for i in range(3):
+		var x=-3.25+i*3.1
+		box(stage,Vector3(x,2.04,-2.1),Vector3(2.52,0.08,0.98),teal)
+		for j in range(4):
+			for y in [0.22,0.83,1.44]:
+				box(stage,Vector3(x-0.88+j*0.58,y,-1.60),Vector3(0.19,0.065,0.018),ivory)
+		box(stage,Vector3(x,0.015,-1.36),Vector3(2.35,0.018,0.14),accent)
+	for x in [-3.5,0.0,3.5]:
+		box(stage,Vector3(x,1.72,-3.74),Vector3(1.55,0.09,0.15),teal)
+		box(stage,Vector3(x,1.68,-3.65),Vector3(1.40,0.045,0.06),ivory)
+	var display=Node3D.new()
+	stage.add_child(display)
+	display.position=Vector3(-4.38,0,-3.22)
+	if asset_library.spawn("market",["basket","shoppingbasket"],display,Vector3.ZERO,Vector3(0.62,0.55,0.62))==null:
+		box(display,Vector3(0,0.17,0),Vector3(0.58,0.34,0.48),teal)
+		box(display,Vector3(0,0.36,0),Vector3(0.60,0.05,0.50),accent)
