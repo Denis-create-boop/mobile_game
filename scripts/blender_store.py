@@ -132,7 +132,33 @@ light("Entrance warm light",(0,-4.3,3.5),160,2.1)
 world=bpy.context.scene.world; world.use_nodes=True; world.node_tree.nodes["Background"].inputs[0].default_value=(.21,.24,.29,1); world.node_tree.nodes["Background"].inputs[1].default_value=.35
 bpy.ops.object.camera_add(location=(0,-9,18)); cam=bpy.context.object; cam.rotation_euler=(Vector((0,0,.5))-cam.location).to_track_quat('-Z','Y').to_euler(); cam.data.type='ORTHO'; cam.data.ortho_scale=15.8; bpy.context.scene.camera=cam
 scene=bpy.context.scene; scene.render.engine="CYCLES"; scene.cycles.samples=24; scene.cycles.use_denoising=True; scene.render.resolution_x=1440; scene.render.resolution_y=1000; scene.render.resolution_percentage=100
-# Source scene and real 3D export; procedural textures are preserved in .blend, base PBR parameters in GLB.
-bpy.ops.wm.save_as_mainfile(filepath=str(out/"store_small_shop.blend"))
-scene.render.filepath=str(out/"preview.png"); bpy.ops.render.render(write_still=True)
-bpy.ops.export_scene.gltf(filepath=str(out/"store_small_shop.glb"),export_format="GLB",export_lights=True)
+# Three controlled color studies, identical layout, camera and lighting.
+def recolor(m,c,rough=None):
+    m.diffuse_color=(*c,1)
+    p=m.node_tree.nodes.get("Principled BSDF")
+    p.inputs["Base Color"].default_value=(*c,1)
+    if rough is not None: p.inputs["Roughness"].default_value=rough
+    for n in m.node_tree.nodes:
+        if n.type=="VALTORGB":
+            n.color_ramp.elements[0].color=(*(v*.83 for v in c),1)
+            n.color_ramp.elements[1].color=(*(min(1,v*1.12) for v in c),1)
+palettes=[
+    ("modern",(.43,.46,.49),(.72,.75,.77),(.11,.13,.15),(.48,.31,.17),(.32,.34,.36)),
+    ("warm",(.57,.49,.39),(.77,.70,.59),(.14,.12,.10),(.50,.29,.13),(.39,.33,.27)),
+    ("premium",(.16,.19,.22),(.39,.43,.47),(.035,.045,.055),(.46,.25,.10),(.09,.11,.13)),
+]
+scene.cycles.samples=64
+scene.render.resolution_x=1600
+scene.render.resolution_y=1110
+for name,floor_c,wall_c,accent_c,wood_c,grout_c in palettes:
+    recolor(tile,floor_c,.42)
+    recolor(wall,wall_c,.65)
+    recolor(dark,accent_c,.32)
+    recolor(wood,wood_c,.43)
+    recolor(grout,grout_c,.75)
+    folder=out/name
+    folder.mkdir(exist_ok=True)
+    scene.render.filepath=str(folder/"preview.png")
+    bpy.ops.wm.save_as_mainfile(filepath=str(folder/"store_small_shop.blend"))
+    bpy.ops.render.render(write_still=True)
+    bpy.ops.export_scene.gltf(filepath=str(folder/"store_small_shop.glb"),export_format="GLB",export_lights=True)

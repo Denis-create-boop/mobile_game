@@ -75,8 +75,10 @@ jobs:
           mkdir -p "$release/art"
           blender -b -t 4 --python-exit-code 1 --python scripts/blender_store.py -- "$release/art"
           cp art/preview.html "$release/art/index.html"
-          test -s "$release/art/preview.png"
-          test -s "$release/art/store_small_shop.glb"
+          for style in modern warm premium; do
+            test -s "$release/art/$style/preview.png"
+            test -s "$release/art/$style/store_small_shop.glb"
+          done
       - uses: actions/upload-artifact@v4
         if: always()
         with:
