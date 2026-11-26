@@ -744,7 +744,7 @@ func _process(delta):
 		actor(people[i],c["pos"],c["carry"],delta)
 		var tag: Label3D=people[i].get_meta("order")
 		tag.text=game.GOODS[c["item"]] if c["phase"]<4 and not c["carry"] else ("Оплата" if c["carry"] and c["phase"]<4 else "")
-	status_label.text=("МАГАЗИН ОТКРЫТ" if game.running else "МАГАЗИН ЗАКРЫТ")+" | V29 • 3D: %d / резерв: %d" % [asset_library.loaded_count,asset_library.fallback_count]
+	status_label.text=("МАГАЗИН ОТКРЫТ" if game.running else "МАГАЗИН ЗАКРЫТ")+" | V30 • 3D: %d / резерв: %d" % [asset_library.loaded_count,asset_library.fallback_count]
 	sales_label.position=Vector2(12,size.y-26)
 	sales_label.text="Выручка: %d мон. | Клиентов: %d" % [game.revenue,game.customers.size()]
 
@@ -875,17 +875,7 @@ func build_city():
 		stage.add_child(car)
 		car.position=Vector3(-24,-0.3,20.85)
 		car.hide()
-		var paint: Color=[Color("#a23736"),Color("#e6e8e8"),Color("#355d86"),Color("#343c42"),Color("#c4a263"),Color("#4d7770")][i%6]
-		box(car,Vector3(0,0.38,0),Vector3(3.2,0.55,1.35),paint)
-		box(car,Vector3(-0.1,0.78,0),Vector3(1.65,0.48,1.19),paint)
-		for side in [-1,1]:
-			box(car,Vector3(-0.1,0.79,side*0.60),Vector3(1.35,0.31,0.025),glass)
-			for x in [-1.02,1.02]:
-				cylinder(car,Vector3(x,0.26,side*0.68),0.27,0.16,metal).rotation.x=PI/2
-		# Asymmetric lights make the direction visible.
-		for side in [-1,1]:
-			box(car,Vector3(1.61,0.40,side*0.45),Vector3(0.035,0.15,0.24),Color("#fff4cf"))
-			box(car,Vector3(-1.61,0.40,side*0.45),Vector3(0.035,0.15,0.24),Color("#b4242d"))
+		build_vehicle(car,i)
 		traffic.append(car)
 	parking=Node3D.new()
 	stage.add_child(parking)
@@ -923,7 +913,15 @@ func update_traffic(delta: float):
 		var front: float=INF
 		for car in moving:
 			var progress: float=car.position.x*direction
-			var advance: float=float(traffic_speeds[car])*delta
+			var desired: float=float(traffic_speeds[car])
+			var speed: float=float(car.get_meta("speed",0.0))
+			var gap: float=front-progress-4.8
+			if game.crossing_mode==0 and signal_phase!=0 and progress<=CROSS_X*direction-3.3:
+				gap=minf(gap,CROSS_X*direction-3.3-progress)
+			desired=minf(desired,sqrt(maxf(0.0,gap)*5.0))
+			speed=move_toward(speed,desired,delta*(2.0 if desired>speed else 5.0))
+			car.set_meta("speed",speed)
+			var advance: float=speed*delta
 			var next: float=minf(progress+advance,front-4.8)
 			var stop_at: float=CROSS_X*direction-3.3
 			if game.crossing_mode==0 and signal_phase!=0 and progress<=stop_at:
@@ -951,7 +949,8 @@ func update_traffic(delta: float):
 		car.set_meta("lane",lane)
 		car.position=Vector3(entry,-0.3,lane_z)
 		car.rotation.y=0.0 if direction>0 else PI
-		traffic_speeds[car]=traffic_rng.randf_range(2.7,6.0)
+		car.set_meta("speed",0.0)
+		traffic_speeds[car]=traffic_rng.randf_range(2.0,4.0) if int(car.get_meta("kind",0))==5 else traffic_rng.randf_range(3.2,7.2)
 		car.show()
 		traffic_timers[lane]=traffic_rng.randf_range(1.4,7.5)
 
@@ -1266,13 +1265,7 @@ func build_neighborhood():
 			cylinder(district,Vector3(x,1.25,z),0.055,3.0,steel)
 			box(district,Vector3(x,2.72,z),Vector3(0.52,0.13,0.22),steel)
 			box(district,Vector3(x,2.64,z),Vector3(0.40,0.035,0.16),Color("#e9d6a8"))
-	# Additional traffic on the rear street only; no unsignalled intersection conflicts.
-	for i in range(6):
-		var car: Node3D=traffic[i].duplicate() as Node3D
-		district.add_child(car)
-		car.show()
-		car.rotation.y=0.0 if i%2==0 else PI
-		neighborhood_cars.append(car)
+	build_junctions(district)
 
 func neighborhood_building(parent: Node3D, pos: Vector3, h: float, variant: int):
 	var root=Node3D.new()
@@ -1292,10 +1285,224 @@ func neighborhood_building(parent: Node3D, pos: Vector3, h: float, variant: int)
 	box(root,Vector3(0,0.95,3.02),Vector3(1.2,1.9,0.12),frame)
 	box(root,Vector3(0,2.03,3.32),Vector3(2.0,0.12,0.7),frame)
 
+
+# Controlled T-junctions on the rear street. Each junction grants one vehicle
+# at a time through the conflict zone and has an exclusive pedestrian phase.
+var junctions: Array[Dictionary]=[]
+var city_vehicles: Array[Dictionary]=[]
+var city_pedestrians: Array[Dictionary]=[]
+var city_spawn_clock: float=0.0
+
+func build_vehicle(car: Node3D, serial: int):
+	var kind: int=serial%6
+	car.set_meta("kind",kind)
+	var paint: Color=[Color("#a23736"),Color("#d8dbdc"),Color("#355d86"),Color("#b8a06f"),Color("#303941"),Color("#5e8275"),Color("#b96b3a")][serial%7]
+	var rubber=Color("#25282b")
+	var glass=Color("#4c697a")
+	var metal=Color("#a2a8ac")
+	if kind>=4:
+		var wheel_r: float=0.32 if kind==4 else 0.38
+		for x in [-0.70,0.70]:
+			cylinder(car,Vector3(x,wheel_r,0),wheel_r,0.16 if kind==4 else 0.065,rubber).rotation.x=PI/2
+			cylinder(car,Vector3(x,wheel_r,0),wheel_r*0.65,0.17 if kind==4 else 0.075,metal).rotation.x=PI/2
+		box(car,Vector3(0,0.52,0),Vector3(1.28,0.12,0.15),paint)
+		box(car,Vector3(0.53,0.78,0),Vector3(0.10,0.65,0.10),metal).rotation.z=0.22
+		box(car,Vector3(0.54,1.08,0),Vector3(0.14,0.07,0.54),metal)
+		box(car,Vector3(-0.35,0.81,0),Vector3(0.43,0.10,0.24),rubber)
+		if kind==4:
+			ball(car,Vector3(0.08,0.69,0),Vector3(0.63,0.38,0.38),paint)
+		# Rider and helmet.
+		ball(car,Vector3(-0.08,1.11,0),Vector3(0.43,0.52,0.34),Color("#414e58"))
+		ball(car,Vector3(0.05,1.47,0),Vector3(0.32,0.33,0.32),paint)
+		for side in [-1,1]:
+			box(car,Vector3(-0.15,0.72,side*0.16),Vector3(0.24,0.44,0.14),Color("#34414c"))
+			box(car,Vector3(0.28,1.13,side*0.15),Vector3(0.45,0.11,0.11),Color("#414e58")).rotation.z=-0.18
+		return
+	var length: float=[3.25,3.55,3.8,4.1][kind]
+	var width: float=1.42 if kind<2 else 1.60
+	var height: float=[0.48,0.62,0.70,0.76][kind]
+	box(car,Vector3(0,0.37,0),Vector3(length,0.45,width),paint)
+	var cabin_length: float=length*(0.50 if kind==0 else 0.68)
+	box(car,Vector3(-0.13,0.62+height/2,0),Vector3(cabin_length,height,width*0.91),paint)
+	for side in [-1,1]:
+		box(car,Vector3(-0.13,0.70+height*0.40,side*width*0.46),Vector3(cabin_length*0.84,height*0.56,0.025),glass)
+		box(car,Vector3(-0.1,0.70+height*0.40,side*width*0.48),Vector3(0.065,height*0.58,0.03),paint)
+		for x in [-length*0.32,length*0.32]:
+			cylinder(car,Vector3(x,0.26,side*width*0.49),0.27,0.19,rubber).rotation.x=PI/2
+			cylinder(car,Vector3(x,0.26,side*width*0.55),0.16,0.05,metal).rotation.x=PI/2
+		box(car,Vector3(length/2,0.43,side*width*0.32),Vector3(0.04,0.17,0.27),Color("#fff2d2"))
+		box(car,Vector3(-length/2,0.43,side*width*0.32),Vector3(0.04,0.16,0.25),Color("#a93637"))
+	box(car,Vector3(cabin_length/2-0.12,0.62+height*0.55,0),Vector3(0.045,height*0.62,width*0.82),glass)
+	box(car,Vector3(-cabin_length/2-0.14,0.62+height*0.55,0),Vector3(0.045,height*0.62,width*0.82),glass)
+	if kind==3:
+		box(car,Vector3(-0.68,0.91,0),Vector3(1.8,1.15,width*0.92),paint)
+
+func build_junctions(parent: Node3D):
+	for index in range(2):
+		var center=Vector3(-17.0 if index==0 else 39.0,-0.30,-15.0)
+		var approaches: Array[Vector3]=[Vector3(0,0,-1),Vector3(0,0,1),Vector3(1 if index==0 else -1,0,0)]
+		var lamps: Array=[]
+		var walk_lamps: Array[MeshInstance3D]=[]
+		for dir in approaches:
+			var right=Vector3(-dir.z,0,dir.x)
+			var pole=center+dir*4.8+right*3.25
+			cylinder(parent,pole+Vector3(0,1.4,0),0.075,2.8,Color("#454d55"))
+			var head=Node3D.new()
+			parent.add_child(head)
+			head.position=pole+Vector3(0,2.55,0)
+			head.rotation.y=atan2(dir.x,dir.z)
+			box(head,Vector3.ZERO,Vector3(0.34,0.92,0.25),Color("#252b30"))
+			var lights: Array[MeshInstance3D]=[]
+			for k in range(3):
+				var lamp=ball(head,Vector3(0,0.30-k*0.30,0.15),Vector3(0.21,0.21,0.07),Color.WHITE)
+				lamp.material_override=StandardMaterial3D.new()
+				lights.append(lamp)
+			lamps.append(lights)
+			var walk=box(head,Vector3(0.38,-0.20,0.08),Vector3(0.24,0.28,0.15),Color("#252b30"))
+			walk.material_override=StandardMaterial3D.new()
+			walk_lamps.append(walk)
+			box(parent,center+dir*5.7-right*1.4+Vector3(0,0.016,0),Vector3(2.55,0.012,0.12) if absf(dir.z)>0.5 else Vector3(0.12,0.012,2.55),Color("#d9d7ce"))
+		junctions.append({"center":center,"dirs":approaches,"lamps":lamps,"walk":walk_lamps,"clock":float(index)*5.0,"owner":-1})
+		for k in range(3):
+			var pedestrian=person([Color("#9a7359"),Color("#637f89"),Color("#746c88")][k])
+			pedestrian.hide()
+			city_pedestrians.append({"node":pedestrian,"junction":index,"offset":float(k)*0.8,"side":1.0 if k%2==0 else -1.0})
+	for i in range(14):
+		var vehicle=Node3D.new()
+		parent.add_child(vehicle)
+		build_vehicle(vehicle,i+24)
+		vehicle.hide()
+		city_vehicles.append({"node":vehicle,"active":false,"speed":0.0,"max_speed":3.0,"junction":0,"approach":0,"exit":1,"segment":0,"points":[]})
+
+func city_phase(j: Dictionary) -> int:
+	var t: float=float(j["clock"])
+	if t<9.0: return 0
+	if t<11.0: return 1
+	if t<13.0: return 2
+	if t<21.0: return 3
+	if t<23.0: return 4
+	if t<25.0: return 5
+	return 6
+
+func city_lamp(lamp: MeshInstance3D, color: Color, enabled: bool):
+	var material: StandardMaterial3D=lamp.material_override
+	material.albedo_color=color if enabled else color.darkened(0.82)
+	material.emission_enabled=enabled
+	material.emission=color
+	material.emission_energy_multiplier=1.3
+
+func start_city_vehicle(index: int, junction_id: int, approach: int):
+	var j: Dictionary=junctions[junction_id]
+	var dirs: Array=j["dirs"]
+	var center: Vector3=j["center"]
+	var incoming: Vector3=dirs[approach]
+	var exit_index: int=(approach+1+traffic_rng.randi_range(0,1))%3
+	var outgoing: Vector3=dirs[exit_index]
+	var side_in=Vector3(incoming.z,0,-incoming.x)*1.4
+	var side_out=Vector3(-outgoing.z,0,outgoing.x)*1.4
+	var entry=center+incoming*3.3+side_in
+	var leave=center+outgoing*3.3+side_out
+	var route: Array[Vector3]=[center+incoming*13.0+side_in,center+incoming*5.7+side_in,entry]
+	for k in range(1,7):
+		var t: float=float(k)/6.0
+		route.append(entry.lerp(center,t).lerp(center.lerp(leave,t),t))
+	route.append(center+outgoing*6.5+side_out)
+	route.append(center+outgoing*13.0+side_out)
+	var car: Dictionary=city_vehicles[index]
+	var node: Node3D=car["node"]
+	car.merge({"active":true,"junction":junction_id,"approach":approach,"exit":exit_index,"segment":0,"points":route,"speed":0.0,"max_speed":traffic_rng.randf_range(1.8,3.4) if int(node.get_meta("kind"))==5 else traffic_rng.randf_range(3.3,6.5)},true)
+	node.position=route[0]
+	node.rotation.y=atan2(incoming.z,-incoming.x)
+	node.show()
+
 func update_neighborhood_traffic(delta: float):
-	neighborhood_time+=delta
-	for i in range(neighborhood_cars.size()):
-		var car: Node3D=neighborhood_cars[i]
-		var distance: float=fposmod(neighborhood_time*3.2+float(i/2)*14.0,43.0)
-		var direction: float=1.0 if i%2==0 else -1.0
-		car.position=Vector3(-11.0+distance if direction>0 else 32.0-distance,-0.3,-15.0+direction*1.4)
+	delta=minf(delta,0.12)
+	for ji in range(junctions.size()):
+		var j: Dictionary=junctions[ji]
+		var t: float=float(j["clock"])+delta
+		# Red clearance remains active until the previous vehicle exits.
+		if (t>=13.0 and t<13.0+delta or t>=25.0 and t<25.0+delta) and int(j["owner"])>=0:
+			t-=delta
+		j["clock"]=fposmod(t,34.0)
+		var phase: int=city_phase(j)
+		var lamps: Array=j["lamps"]
+		for approach in range(lamps.size()):
+			var horizontal: bool=approach==2
+			var green: bool=(horizontal and phase==3) or (not horizontal and phase==0)
+			var yellow: bool=(horizontal and phase==4) or (not horizontal and phase==1)
+			city_lamp(lamps[approach][0],Color("#e53a39"),not green and not yellow)
+			city_lamp(lamps[approach][1],Color("#efb536"),yellow)
+			city_lamp(lamps[approach][2],Color("#55d878"),green)
+			city_lamp(j["walk"][approach],Color("#55d878") if phase==6 else Color("#e53a39"),true)
+	for ped in city_pedestrians:
+		var j: Dictionary=junctions[int(ped["junction"])]
+		var node: Node3D=ped["node"]
+		var elapsed: float=float(j["clock"])-25.0-float(ped["offset"])
+		if city_phase(j)==6 and elapsed>=0.0 and elapsed<=6.5:
+			var center: Vector3=j["center"]
+			node.show()
+			node.position=center+Vector3(lerpf(-3.5,3.5,elapsed/6.5)*float(ped["side"]),0.05,4.0)
+			node.rotation.y=PI/2*float(ped["side"])
+		else:
+			node.hide()
+	city_spawn_clock-=delta
+	if city_spawn_clock<=0.0:
+		city_spawn_clock=traffic_rng.randf_range(0.9,3.8)
+		var ji: int=traffic_rng.randi_range(0,1)
+		var approach: int=traffic_rng.randi_range(0,2)
+		var free_entry: bool=true
+		for car in city_vehicles:
+			if car["active"] and int(car["junction"])==ji and int(car["approach"])==approach and int(car["segment"])==0:
+				var node: Node3D=car["node"]
+				var route: Array=car["points"]
+				if node.position.distance_to(route[0])<5.0:
+					free_entry=false
+		if free_entry:
+			for i in range(city_vehicles.size()):
+				if not city_vehicles[i]["active"]:
+					start_city_vehicle(i,ji,approach)
+					break
+	for i in range(city_vehicles.size()):
+		var car: Dictionary=city_vehicles[i]
+		if not car["active"]: continue
+		var node: Node3D=car["node"]
+		var j: Dictionary=junctions[int(car["junction"])]
+		var points: Array=car["points"]
+		var segment: int=int(car["segment"])
+		var target: Vector3=points[segment+1]
+		var offset: Vector3=target-node.position
+		var distance: float=offset.length()
+		var desired: float=float(car["max_speed"])
+		var phase: int=city_phase(j)
+		var green: bool=(int(car["approach"])==2 and phase==3) or (int(car["approach"])!=2 and phase==0)
+		if segment==0:
+			desired=minf(desired,sqrt(maxf(distance-0.04,0.0)*5.0))
+			for other in city_vehicles:
+				if other==car or not other["active"] or int(other["junction"])!=int(car["junction"]) or int(other["approach"])!=int(car["approach"]): continue
+				var other_node: Node3D=other["node"]
+				var ahead: float=(other_node.position-node.position).dot(offset.normalized())
+				if ahead>0.0 and ahead<5.0 and int(other["segment"])<=1:
+					desired=minf(desired,maxf(0.0,(ahead-4.3)*2.0))
+		elif segment==1 and int(j["owner"])!=i:
+			desired=0.0
+			if green and int(j["owner"])<0:
+				j["owner"]=i
+				desired=float(car["max_speed"])*0.65
+			else:
+				continue
+		elif segment<9:
+			desired=minf(desired,3.1)
+		var speed: float=move_toward(float(car["speed"]),desired,delta*(2.1 if desired>float(car["speed"]) else 5.0))
+		car["speed"]=speed
+		if distance>0.02:
+			var direction: Vector3=offset/distance
+			node.rotation.y=lerp_angle(node.rotation.y,atan2(-direction.z,direction.x),minf(delta*9.0,1.0))
+			node.position+=direction*minf(distance,speed*delta)
+		if distance<=0.09:
+			if segment==0:
+				car["speed"]=0.0
+			car["segment"]=segment+1
+			if segment>=9:
+				if int(j["owner"])==i: j["owner"]=-1
+				node.hide()
+				car["active"]=false
