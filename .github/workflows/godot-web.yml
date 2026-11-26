@@ -44,6 +44,25 @@ jobs:
           test -s "$release/index.html"
           test -s "$release/index.wasm"
           printf '<!doctype html><meta charset="utf-8"><meta http-equiv="refresh" content="0;url=release-%s/"><a href="release-%s/">Open Market Empire</a>' "${GITHUB_SHA:0:12}" "${GITHUB_SHA:0:12}" > build/web/index.html
+      - name: Capture browser screenshots
+        continue-on-error: true
+        run: |
+          pip install playwright pillow
+          python -m playwright install --with-deps chromium
+          python -m http.server 8765 --directory build/web > /tmp/server.log 2>&1 &
+          python scripts/web_visual_check.py
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: browser-screenshots
+          path: /tmp/menu.png
+          if-no-files-found: warn
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: browser-game-screenshot
+          path: /tmp/game.png
+          if-no-files-found: warn
       - uses: actions/upload-artifact@v4
         with:
           name: market-empire-web

@@ -148,8 +148,8 @@ func label(parent: Node, value: String, size: int = 18) -> Label:
 func button(parent: Node, value: String, action: Callable) -> Button:
 	var b = Button.new()
 	b.text = value
-	b.custom_minimum_size.y = 35
-	b.add_theme_font_size_override("font_size", 13)
+	b.custom_minimum_size.y = 44
+	b.add_theme_font_size_override("font_size", 16)
 	b.add_theme_stylebox_override("normal", style(Color("#334f6e")))
 	b.add_theme_stylebox_override("hover", style(Color("#476c94")))
 	b.add_theme_stylebox_override("pressed", style(Color("#233b57")))
@@ -174,7 +174,7 @@ func build_ui():
 	overlay_bar.offset_right=-12
 	overlay_bar.offset_top=10
 	overlay_bar.add_theme_constant_override("separation",8)
-	hud=label(overlay_bar,"",17)
+	hud=label(overlay_bar,"",21)
 	hud.add_theme_color_override("font_shadow_color",Color("#20232a"))
 	hud.add_theme_constant_override("shadow_offset_x",1)
 	hud.add_theme_constant_override("shadow_offset_y",2)
@@ -190,8 +190,8 @@ func build_ui():
 	panel.set_anchors_and_offsets_preset(Control.PRESET_TOP_RIGHT)
 	panel.offset_left=-356
 	panel.offset_right=-12
-	panel.offset_top=55
-	panel.offset_bottom=475
+	panel.offset_top=65
+	panel.offset_bottom=520
 	panel.hide()
 	tabs = TabContainer.new()
 	tabs.add_theme_font_size_override("font_size", 13)
@@ -250,20 +250,21 @@ func build_ui():
 	controls_bar=HBoxContainer.new()
 	add_child(controls_bar)
 	controls_bar.set_anchors_and_offsets_preset(Control.PRESET_BOTTOM_RIGHT)
-	controls_bar.offset_left=-270
+	controls_bar.offset_left=-420
 	controls_bar.offset_right=-12
-	controls_bar.offset_top=-49
+	controls_bar.offset_top=-60
 	controls_bar.offset_bottom=-12
 	button(controls_bar,"−",func(): visual.zoom(1.15))
 	button(controls_bar,"+",func(): visual.zoom(0.87))
 	button(controls_bar,"<",func(): visual.rotate_view(-1))
 	button(controls_bar,">",func(): visual.rotate_view(1))
 	button(controls_bar,"Обзор",func(): visual.overview())
+	button(controls_bar,"Домой",func(): visual.reset_view())
 	hint=Label.new()
 	add_child(hint)
 	hint.set_anchors_and_offsets_preset(Control.PRESET_BOTTOM_WIDE)
 	hint.offset_left=12
-	hint.offset_right=-290
+	hint.offset_right=-430
 	hint.offset_top=-74
 	hint.offset_bottom=-45
 	hint.mouse_filter=Control.MOUSE_FILTER_IGNORE
@@ -846,13 +847,13 @@ func show_menu():
 	var center=CenterContainer.new()
 	menu.add_child(center)
 	var column=VBoxContainer.new()
-	column.custom_minimum_size.x=400
-	column.add_theme_constant_override("separation",12)
+	column.custom_minimum_size.x=540
+	column.add_theme_constant_override("separation",13)
 	center.add_child(column)
-	var heading=label(column,"MARKET EMPIRE",40)
+	var heading=label(column,"MARKET EMPIRE",58)
 	heading.horizontal_alignment=HORIZONTAL_ALIGNMENT_CENTER
 	heading.add_theme_color_override("font_color",Color("#dbe8fa"))
-	var subtitle=label(column,"Построй свою торговую империю",19)
+	var subtitle=label(column,"Построй свою торговую империю",24)
 	subtitle.horizontal_alignment=HORIZONTAL_ALIGNMENT_CENTER
 	button(column,"Продолжить игру",func(): menu.hide())
 	button(column,"Как играть",show_help)
@@ -866,6 +867,12 @@ func show_menu():
 	var toggle=button(column,"Звук: "+("выкл." if muted else "вкл."),toggle_sound)
 	toggle.name="SoundToggle"
 	button(column,"Начать новую игру",confirm_reset)
+	for child in column.get_children():
+		if child is Button:
+			child.custom_minimum_size.y=52
+			child.add_theme_font_size_override("font_size",20)
+	var version_label=label(column,"V22",14)
+	version_label.horizontal_alignment=HORIZONTAL_ALIGNMENT_CENTER
 
 func toggle_sound():
 	muted=not muted

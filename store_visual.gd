@@ -80,6 +80,8 @@ func _ready():
 	viewport = SubViewport.new()
 	viewport.size = Vector2i(960,640)
 	viewport.own_world_3d = true
+	viewport.disable_3d=false
+	viewport.transparent_bg=false
 	viewport.msaa_3d = Viewport.MSAA_DISABLED if OS.has_feature("web") else Viewport.MSAA_2X
 	viewport.render_target_update_mode = SubViewport.UPDATE_ALWAYS
 	add_child(viewport)
@@ -88,7 +90,7 @@ func _ready():
 	var env = WorldEnvironment.new()
 	var e = Environment.new()
 	e.background_mode = Environment.BG_COLOR
-	e.background_color = Color("#dce5ed")
+	e.background_color = Color("#303b40")
 	e.ambient_light_source = Environment.AMBIENT_SOURCE_COLOR
 	e.ambient_light_color = Color("#f0f2f5")
 	e.ambient_light_energy = 0.55
@@ -124,6 +126,8 @@ func _ready():
 	build_realistic_details()
 	build_street_details()
 	reset_view()
+	camera.make_current()
+	call_deferred("ensure_camera")
 	print("Market assets loaded: ",asset_library.catalog.get("market",{}).size())
 	status_label = Label.new()
 	status_label.position = Vector2(12,53)
@@ -677,7 +681,7 @@ func _process(delta):
 		actor(people[i],c["pos"],c["carry"],delta)
 		var tag: Label3D=people[i].get_meta("order")
 		tag.text=game.GOODS[c["item"]] if c["phase"]<4 and not c["carry"] else ("Оплата" if c["carry"] and c["phase"]<4 else "")
-	status_label.text=("МАГАЗИН ОТКРЫТ" if game.running else "МАГАЗИН ЗАКРЫТ")+" | V21 • 3D: %d / резерв: %d" % [asset_library.loaded_count,asset_library.fallback_count]
+	status_label.text=("МАГАЗИН ОТКРЫТ" if game.running else "МАГАЗИН ЗАКРЫТ")+" | V22 • 3D: %d / резерв: %d" % [asset_library.loaded_count,asset_library.fallback_count]
 	sales_label.position=Vector2(12,size.y-26)
 	sales_label.text="Выручка: %d мон. | Клиентов: %d" % [game.revenue,game.customers.size()]
 
@@ -1077,6 +1081,13 @@ func update_render_resolution():
 	# Container owns the render dimensions and maps pointer coordinates.
 	stretch_shrink=1 if quality_high else 2
 	viewport.render_target_update_mode=SubViewport.UPDATE_ALWAYS
+
+func ensure_camera():
+	if not is_instance_valid(camera):
+		return
+	camera.make_current()
+	viewport.render_target_update_mode=SubViewport.UPDATE_ALWAYS
+	update_camera()
 
 # Retail materials: reusable brushed metal, satin wood and transparent glazing.
 func metalize(n: MeshInstance3D, color: Color, rough: float=0.35):
