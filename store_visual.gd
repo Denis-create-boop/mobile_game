@@ -122,6 +122,7 @@ func _ready():
 	add_merchandising()
 	build_architecture()
 	build_realistic_details()
+	build_street_details()
 	reset_view()
 	print("Market assets loaded: ",asset_library.catalog.get("market",{}).size())
 	status_label = Label.new()
@@ -165,7 +166,7 @@ func rotate_view(direction: int):
 func update_camera():
 	camera.size=camera_zoom
 	var target=focus
-	camera.look_at_from_position(target+Vector3(sin(orbit)*17,14,cos(orbit)*17),target)
+	camera.look_at_from_position(target+Vector3(sin(orbit)*17,21,cos(orbit)*17),target)
 
 func pan_map(relative: Vector2):
 	if camera==null or size.y<2:
@@ -676,7 +677,7 @@ func _process(delta):
 		actor(people[i],c["pos"],c["carry"],delta)
 		var tag: Label3D=people[i].get_meta("order")
 		tag.text=game.GOODS[c["item"]] if c["phase"]<4 and not c["carry"] else ("Оплата" if c["carry"] and c["phase"]<4 else "")
-	status_label.text=("МАГАЗИН ОТКРЫТ" if game.running else "МАГАЗИН ЗАКРЫТ")+" | V20 • 3D: %d / резерв: %d" % [asset_library.loaded_count,asset_library.fallback_count]
+	status_label.text=("МАГАЗИН ОТКРЫТ" if game.running else "МАГАЗИН ЗАКРЫТ")+" | V21 • 3D: %d / резерв: %d" % [asset_library.loaded_count,asset_library.fallback_count]
 	sales_label.position=Vector2(12,size.y-26)
 	sales_label.text="Выручка: %d мон. | Клиентов: %d" % [game.revenue,game.customers.size()]
 
@@ -806,16 +807,7 @@ func build_city():
 		car.position=Vector3(-24,-0.3,20.85)
 		car.hide()
 		var paint: Color=[Color("#a23736"),Color("#e6e8e8"),Color("#355d86"),Color("#343c42"),Color("#c4a263"),Color("#4d7770")][i%6]
-		box(car,Vector3(0,0.38,0),Vector3(3.2,0.55,1.35),paint)
-		box(car,Vector3(-0.1,0.78,0),Vector3(1.65,0.48,1.19),paint)
-		for side in [-1,1]:
-			box(car,Vector3(-0.1,0.79,side*0.60),Vector3(1.35,0.31,0.025),glass)
-			for x in [-1.02,1.02]:
-				cylinder(car,Vector3(x,0.26,side*0.68),0.27,0.16,metal).rotation.x=PI/2
-		# Asymmetric lights make the direction visible.
-		for side in [-1,1]:
-			box(car,Vector3(1.61,0.40,side*0.45),Vector3(0.035,0.15,0.24),Color("#fff4cf"))
-			box(car,Vector3(-1.61,0.40,side*0.45),Vector3(0.035,0.15,0.24),Color("#b4242d"))
+		make_vehicle(car,paint,i%3)
 		traffic.append(car)
 	parking=Node3D.new()
 	stage.add_child(parking)
@@ -1234,3 +1226,74 @@ func build_realistic_details():
 	for z in [-3.23,-0.77]:
 		for x in [-7.77,-7.03]:
 			metalize(box(stage,Vector3(x,0.90,z),Vector3(0.055,1.80,0.055),Color("#777d80")),Color("#777d80"))
+
+# Rounded vehicle hulls use a shared low-poly surface with smooth normals.
+func vehicle_body(parent: Node3D, pos: Vector3, dimensions: Vector3, color: Color):
+	var n=ball(parent,pos,dimensions,color)
+	var m=mat(color).duplicate() as StandardMaterial3D
+	m.metallic=0.30
+	m.roughness=0.26
+	n.material_override=m
+
+func make_vehicle(car: Node3D, paint: Color, kind: int):
+	var tire=Color("#222326")
+	var trim=Color("#45494c")
+	var glass=Color("#344b60")
+	var cabin_height: float=0.46 if kind==0 else 0.62 if kind==1 else 0.53
+	vehicle_body(car,Vector3(0,0.44,0),Vector3(3.26,0.68,1.40),paint)
+	vehicle_body(car,Vector3(-0.18,0.77,0),Vector3(1.94,cabin_height,1.22),paint)
+	vehicle_body(car,Vector3(-0.16,0.79,0),Vector3(1.85,cabin_height*0.83,1.235),glass)
+	vehicle_body(car,Vector3(-0.20,0.99,0),Vector3(1.16,0.12,0.98),paint)
+	for side in [-1,1]:
+		box(car,Vector3(-0.20,0.79,side*0.60),Vector3(0.055,0.32,0.025),trim)
+		box(car,Vector3(0.18,0.53,side*0.67),Vector3(0.13,0.035,0.025),trim)
+		vehicle_body(car,Vector3(0.55,0.74,side*0.71),Vector3(0.24,0.11,0.20),paint)
+		for x in [-1.04,1.04]:
+			var wheel=cylinder(car,Vector3(x,0.27,side*0.67),0.27,0.19,tire)
+			wheel.rotation.x=PI/2
+			var hub=cylinder(car,Vector3(x,0.27,side*0.777),0.17,0.025,Color("#a8adb2"))
+			hub.rotation.x=PI/2
+			for j in range(5):
+				var angle: float=j*TAU/5.0
+				var spoke=box(car,Vector3(x+cos(angle)*0.073,0.27+sin(angle)*0.073,side*0.795),Vector3(0.12,0.025,0.008),trim)
+				spoke.rotation.z=angle
+		vehicle_body(car,Vector3(1.42,0.46,side*0.43),Vector3(0.22,0.13,0.33),Color("#fff3c9"))
+		vehicle_body(car,Vector3(-1.42,0.46,side*0.43),Vector3(0.20,0.13,0.31),Color("#c43538"))
+	box(car,Vector3(1.55,0.32,0),Vector3(0.035,0.12,0.68),trim)
+	box(car,Vector3(-1.55,0.36,0),Vector3(0.035,0.12,0.42),Color("#e4e4dc"))
+	box(car,Vector3(1.56,0.40,0),Vector3(0.03,0.12,0.42),Color("#e4e4dc"))
+
+func build_street_details():
+	var dark=Color("#45474a")
+	var oak=Color("#a77b50")
+	var concrete=Color("#96999a")
+	# Street furniture with slatted seats and raised flower planters.
+	for x in [-0.9,2.0]:
+		for j in range(5):
+			box(stage,Vector3(x,0.33,5.05+j*0.08),Vector3(1.35,0.055,0.065),oak.lightened(j*0.025))
+		for j in range(4):
+			box(stage,Vector3(x,0.44+j*0.075,5.45),Vector3(1.35,0.055,0.055),oak)
+		for side in [-1,1]:
+			box(stage,Vector3(x+side*0.55,0.24,5.26),Vector3(0.07,0.48,0.40),dark)
+	for x in [-5.0,-1.7,3.4,4.8]:
+		box(stage,Vector3(x,0.15,5.65),Vector3(0.76,0.30,0.60),oak)
+		box(stage,Vector3(x,0.31,5.65),Vector3(0.71,0.035,0.55),Color("#473a2c"))
+		for j in range(7):
+			var p=Vector3(x-0.26+(j%4)*0.17,0.43+0.045*(j%2),5.51+floori(j/4.0)*0.24)
+			ball(stage,p,Vector3(0.19,0.25,0.19),Color("#42703e").lightened((j%3)*0.09))
+			ball(stage,p+Vector3(0,0.15,0),Vector3(0.10,0.07,0.10),[Color("#be476a"),Color("#dca43c"),Color("#7068bd")][j%3])
+	# Continuous pavement and raised kerbs outside the maximum road width.
+	for side in [-1,1]:
+		var z: float=19.5+side*8.8
+		box(stage,Vector3(2,-0.26,z),Vector3(42,0.16,1.4),concrete)
+		make_floor(stage,Vector3(2,-0.22,z),Vector2(42,1.4),Color("#b1ada5"))
+		box(stage,Vector3(2,-0.24,z-side*0.73),Vector3(42,0.22,0.12),Color("#e1ddd4"))
+	# Store doorway with glass leaves parked open, warm vertical luminaires.
+	for x in [-4.72,-2.08]:
+		glazing(stage,Vector3(x,1.03,4.16),Vector3(0.48,1.83,0.035))
+		box(stage,Vector3(x,1.0,4.19),Vector3(0.035,0.35,0.06),dark)
+		light_strip(stage,Vector3(x,1.30,4.25),Vector3(0.045,0.62,0.045))
+	# Doorway mat and threshold.
+	box(stage,Vector3(-3.4,0.025,3.55),Vector3(2.15,0.035,0.70),Color("#414347"))
+	for j in range(12):
+		box(stage,Vector3(-4.38+j*0.18,0.046,3.55),Vector3(0.025,0.008,0.66),Color("#5d5e60"))
