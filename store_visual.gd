@@ -32,6 +32,11 @@ var delivery_boxes: Array = []
 var tick: float = 0.0
 var build_pads: Array = []
 var annex: Node3D
+var land_wings: Array[Node3D] = []
+var land_signs: Array[Node3D] = []
+var parking: Node3D
+var parking_sign: Node3D
+var traffic: Array[Node3D] = []
 var built_racks: Array = []
 var built_items: Array = []
 var truck: Node3D
@@ -61,17 +66,17 @@ func _ready():
 	e.background_color = Color("#a9c4cd")
 	e.ambient_light_source = Environment.AMBIENT_SOURCE_COLOR
 	e.ambient_light_color = Color("#c4d5d4")
-	e.ambient_light_energy = 0.48
+	e.ambient_light_energy = 0.72
 	env.environment = e
 	stage.add_child(env)
 	var light = DirectionalLight3D.new()
 	light.rotation_degrees = Vector3(-57,-38,0)
-	light.light_energy = 0.82
+	light.light_energy = 1.05
 	scene_light=light
 	light.shadow_enabled = true
 	light.directional_shadow_max_distance=30.0
-	light.shadow_bias=0.25
-	light.shadow_normal_bias=1.0
+	light.shadow_bias=0.08
+	light.shadow_normal_bias=0.55
 	stage.add_child(light)
 	camera = Camera3D.new()
 	camera.projection = Camera3D.PROJECTION_ORTHOGONAL
@@ -85,6 +90,7 @@ func _ready():
 	decorate_store()
 	add_details()
 	add_landscaping()
+	build_city()
 	add_merchandising()
 	reset_view()
 	print("Market assets loaded: ",asset_library.catalog.get("market",{}).size())
@@ -116,11 +122,11 @@ func reset_view():
 	update_camera()
 
 func overview():
-	focus_goal=Vector3(2.5,0.5,0)
-	zoom_goal=17.0
+	focus_goal=Vector3(3,0.5,5)
+	zoom_goal=25.0
 
 func zoom(factor: float):
-	zoom_goal=clampf(zoom_goal*factor,6,23)
+	zoom_goal=clampf(zoom_goal*factor,6,30)
 
 func rotate_view(direction: int):
 	orbit=clampf(orbit+direction*0.35,-0.45,1.45)
@@ -230,10 +236,10 @@ func sign_text(parent: Node3D, pos: Vector3, value: String, color: Color, pixel:
 
 func build_store():
 	var wood = Color("#bb8961")
-	var mint = Color("#398675")
-	var cream = Color("#cdbda2")
+	var mint = Color("#168d80")
+	var cream = Color("#dfc29d")
 	box(stage,Vector3(0,-0.32,0),Vector3(10.4,0.5,8.4),Color("#688e82"))
-	make_floor(stage,Vector3(0,-0.05,0),Vector2(10,8),Color("#c3ae91"))
+	make_floor(stage,Vector3(0,-0.05,0),Vector2(10,8),Color("#dddcd4"))
 	box(stage,Vector3(0,0.95,-4.0),Vector3(10.3,1.9,0.18),cream)
 	box(stage,Vector3(-5,0.95,0),Vector3(0.18,1.9,8),cream)
 	box(stage,Vector3(0,1.98,-4.0),Vector3(10.45,0.17,0.29),mint)
@@ -370,19 +376,37 @@ func decorate_store():
 		box(stage,Vector3(x,0.018,3.9),Vector3(0.65,0.025,0.07),gold)
 
 func build_extension():
-	var cream=Color("#cdbda2")
-	var mint=Color("#398675")
+	var cream=Color("#dfc29d")
+	var mint=Color("#168d80")
 	var wood=Color("#b88c62")
 	# Additional retail wing with accessible construction pads.
 	box(stage,Vector3(8.6,-0.29,0),Vector3(8.2,0.48,8.4),Color("#688e82"))
-	make_floor(stage,Vector3(8.6,-0.05,0),Vector2(8.2,8),Color("#c3ae91"))
+	make_floor(stage,Vector3(8.6,-0.05,0),Vector2(8.2,8),Color("#dddcd4"))
 	box(stage,Vector3(8.6,0.85,-4),Vector3(8.3,1.7,0.18),cream)
 	box(stage,Vector3(8.6,1.77,-4),Vector3(8.3,0.12,0.26),mint)
 	annex=Node3D.new()
 	stage.add_child(annex)
 	box(annex,Vector3(8.6,-0.29,5.8),Vector3(8.2,0.48,4.4),Color("#688e82"))
-	make_floor(annex,Vector3(8.6,-0.05,5.8),Vector2(8.2,4.4),Color("#c3ae91"))
-	for i in range(12):
+	make_floor(annex,Vector3(8.6,-0.05,5.8),Vector2(8.2,4.4),Color("#dddcd4"))
+	for wing in range(2):
+		var hall=Node3D.new()
+		stage.add_child(hall)
+		var z: float=10.2+wing*4.5
+		box(hall,Vector3(8.6,-0.29,z),Vector3(8.2,0.48,4.5),Color("#688e82"))
+		make_floor(hall,Vector3(8.6,-0.05,z),Vector2(8.2,4.5),Color("#dddcd4"))
+		land_wings.append(hall)
+		var marker=Node3D.new()
+		stage.add_child(marker)
+		box(marker,Vector3(8.6,-0.20,z),Vector3(8.1,0.12,4.4),Color("#849b75"))
+		var notice=Label3D.new()
+		notice.text="УЧАСТОК %d • %d мон." % [wing+2,game.LAND_PRICES[wing+1]]
+		notice.billboard=BaseMaterial3D.BILLBOARD_ENABLED
+		notice.font_size=48
+		notice.pixel_size=0.012
+		marker.add_child(notice)
+		notice.position=Vector3(8.6,0.65,z)
+		land_signs.append(marker)
+	for i in range(24):
 		var center: Vector3=game.build_slot(i)
 		var pad=box(stage,center+Vector3(0,0.015,0),Vector3(2.4,0.035,1.65),Color("#91bdab"))
 		build_pads.append(pad)
@@ -416,7 +440,7 @@ func install_rack(slot: int, kind: int):
 	var rack=Node3D.new()
 	stage.add_child(rack)
 	rack.position=game.build_slot(slot)
-	var color=Color("#63a9c4") if kind in [1,3,8,11] else Color("#398675")
+	var color=Color("#63a9c4") if kind in [1,3,8,11] else Color("#168d80")
 	var cream=Color("#f1e8d4")
 	var height=1.15 if kind in [2,7] else 1.8
 	var fixture_names=["displayfruit"] if kind in [2,7] else (["freezersstanding"] if kind in [1,3,8,11] else ["shelfboxes"])
@@ -530,8 +554,8 @@ func _process(delta):
 		return
 	tick+=delta
 	if game.build_kind>=0:
-		focus_goal=Vector3(8.4,0.5,2.2 if game.area_level>=2 else 0)
-		zoom_goal=maxf(zoom_goal,14.0 if game.area_level>=2 else 11.5)
+		focus_goal=Vector3(8.4,0.5,float(game.area_level-1)*2.5)
+		zoom_goal=maxf(zoom_goal,11.5+float(game.area_level-1)*4.0)
 	elif focus_goal.x>5:
 		focus_goal=Vector3(0,0.5,0)
 		zoom_goal=10.8
@@ -540,7 +564,14 @@ func _process(delta):
 	update_camera()
 	var displayed=[12,12,12,0,0,0,0,0,0,0,0,0]
 	annex.visible=game.area_level>=2
-	for i in range(12):
+	for i in range(land_wings.size()):
+		land_wings[i].visible=game.area_level>=i+3
+		land_signs[i].visible=not land_wings[i].visible
+	parking.visible=game.parking_owned
+	parking_sign.visible=not game.parking_owned
+	for i in range(traffic.size()):
+		traffic[i].position.x=fposmod(tick*(1.8+i*0.25)+i*10.0,40.0)-20.0
+	for i in range(24):
 		var kind: int=game.placements[i]
 		build_pads[i].visible=game.build_kind>=0 and kind<0 and i<game.active_slots()
 		if kind>=0:
@@ -619,7 +650,7 @@ func _process(delta):
 		actor(people[i],c["pos"],c["carry"],delta)
 		var tag: Label3D=people[i].get_meta("order")
 		tag.text=game.GOODS[c["item"]] if c["phase"]<4 and not c["carry"] else ("Оплата" if c["carry"] and c["phase"]<4 else "")
-	status_label.text=("МАГАЗИН ОТКРЫТ" if game.running else "МАГАЗИН ЗАКРЫТ")+" | V10 • 3D: %d / резерв: %d" % [asset_library.loaded_count,asset_library.fallback_count]
+	status_label.text=("МАГАЗИН ОТКРЫТ" if game.running else "МАГАЗИН ЗАКРЫТ")+" | V11 • 3D: %d / резерв: %d" % [asset_library.loaded_count,asset_library.fallback_count]
 	sales_label.position=Vector2(12,size.y-28)
 	sales_label.text="Выручка: %d мон. | Клиентов: %d" % [game.revenue,game.customers.size()]
 
@@ -695,11 +726,11 @@ func add_landscaping():
 	var asphalt=Color("#526366")
 	var grass=Color("#658b68")
 	var concrete=Color("#b7b2a2")
-	box(stage,Vector3(2,-0.56,1),Vector3(24,0.2,17),grass)
-	box(stage,Vector3(2,-0.43,6.5),Vector3(23.5,0.13,4.7),asphalt)
-	box(stage,Vector3(2,-0.33,4.45),Vector3(23.5,0.18,0.65),concrete)
-	for i in range(12):
-		box(stage,Vector3(-8+i*1.8,-0.35,7.2),Vector3(0.9,0.025,0.07),Color("#e4d9aa"))
+	box(stage,Vector3(2,-0.56,1),Vector3(43,0.2,36),grass)
+	box(stage,Vector3(2,-0.43,19.5),Vector3(42,0.13,5.4),asphalt)
+	box(stage,Vector3(2,-0.20,16.4),Vector3(42,0.18,1.5),concrete)
+	for i in range(22):
+		box(stage,Vector3(-18+i*1.8,-0.35,19.5),Vector3(0.9,0.025,0.07),Color("#e4d9aa"))
 	for pos in [Vector3(-8.5,-0.3,-4.7),Vector3(3.9,-0.3,-5.1),Vector3(12.8,-0.3,-4.8)]:
 		cylinder(stage,pos+Vector3(0,0.8,0),0.13,1.6,Color("#805d43"))
 		ball(stage,pos+Vector3(0,1.9,0),Vector3(1.5,1.75,1.5),grass.darkened(0.12))
@@ -730,3 +761,47 @@ func add_merchandising():
 	if asset_library.spawn("market",["shoppingbasket"],display,Vector3.ZERO,Vector3(0.62,0.55,0.62))==null:
 		box(display,Vector3(0,0.17,0),Vector3(0.58,0.34,0.48),teal)
 		box(display,Vector3(0,0.36,0),Vector3(0.60,0.05,0.50),accent)
+
+func build_city():
+	var stone=Color("#c6c8c5")
+	var metal=Color("#35454d")
+	var glass=Color("#91c8d8")
+	box(stage,Vector3(-3.4,-0.16,10.0),Vector3(2.8,0.25,12.8),stone)
+	for i in range(6):
+		var x: float=-16.0+i*6.5
+		cylinder(stage,Vector3(x,1.4,16.4),0.055,3.1,metal)
+		box(stage,Vector3(x,2.95,16.65),Vector3(0.18,0.12,0.65),metal)
+		box(stage,Vector3(x,2.89,16.86),Vector3(0.16,0.035,0.24),Color("#fff1c8"))
+	for i in range(3):
+		var car=Node3D.new()
+		stage.add_child(car)
+		car.position=Vector3(0,-0.3,18.25+i%2*2.2)
+		var paint: Color=[Color("#a23736"),Color("#e6e8e8"),Color("#355d86")][i]
+		box(car,Vector3(0,0.38,0),Vector3(3.2,0.55,1.35),paint)
+		box(car,Vector3(-0.1,0.78,0),Vector3(1.65,0.48,1.19),paint)
+		for side in [-1,1]:
+			box(car,Vector3(-0.1,0.79,side*0.60),Vector3(1.35,0.31,0.025),glass)
+			for x in [-1.02,1.02]:
+				cylinder(car,Vector3(x,0.26,side*0.68),0.27,0.16,metal).rotation.x=PI/2
+		traffic.append(car)
+	parking=Node3D.new()
+	stage.add_child(parking)
+	box(parking,Vector3(-9,-0.20,11.0),Vector3(8,0.14,9),Color("#60696c"))
+	for i in range(4):
+		var x: float=-12.6+i*2.4
+		box(parking,Vector3(x,-0.12,11),Vector3(0.055,0.025,4.6),Color.WHITE)
+	parking_sign=Node3D.new()
+	stage.add_child(parking_sign)
+	box(parking_sign,Vector3(-9,-0.20,11),Vector3(8,0.12,9),Color("#80966e"))
+	var notice=Label3D.new()
+	notice.text="ПАРКОВКА • 350 мон."
+	notice.billboard=BaseMaterial3D.BILLBOARD_ENABLED
+	notice.font_size=48
+	notice.pixel_size=0.012
+	parking_sign.add_child(notice)
+	notice.position=Vector3(-9,0.5,11)
+	# Open front facade: glass side panels preserve the cutaway view.
+	for x in [-4.82,-2.0]:
+		box(stage,Vector3(x,1.05,4.04),Vector3(0.12,2.1,0.16),metal)
+	box(stage,Vector3(-3.4,2.28,4.04),Vector3(2.95,0.42,0.24),Color("#168d80"))
+	sign_text(stage,Vector3(-3.4,2.28,4.19),"MARKET",Color.WHITE,0.006)

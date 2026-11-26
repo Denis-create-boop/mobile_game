@@ -25,6 +25,9 @@ var delivery: Array = [0,0,0]
 var shelf_levels: Array = [1,1,1]
 var placements: Array = [-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1]
 var area_level: int = 1
+const LAND_PRICES = [450, 900, 1500]
+var parking_button: Button
+var parking_owned: bool = false
 var area_button: Button
 var reputation: float = 60.0
 var promo_left: float = 0.0
@@ -184,6 +187,7 @@ func build_ui():
 	button(side, "Отменить строительство", cancel_build)
 	button(side, "Расширить склад · 180 мон.", expand_warehouse)
 	area_button=button(side,"",expand_area)
+	parking_button=button(side,"",buy_parking)
 	side = tab_page("Штат")
 	label(side, "ПЕРСОНАЛ", 15)
 	for i in range(3):
@@ -232,7 +236,7 @@ func tab_page(title: String) -> VBoxContainer:
 	return content
 
 func build_slot(i: int) -> Vector3:
-	return Vector3(5.9+(i%3)*2.7,0,-2.1+floori(i/3.0)*2.25)
+	return Vector3(5.9+(i%3)*2.7,0,-2.1+floori(i/3.0)*2.25+(2.2 if i>=12 else 0.0))
 
 func cancel_build():
 	build_kind=-1
@@ -300,8 +304,10 @@ func refresh():
 	for i in range(3):
 		staff_buttons[i].text = "%s %d/3 · нанять %d" % [names[i],counts[i],role_cost(i)]
 		staff_buttons[i].disabled = counts[i]>=3 or cash<role_cost(i)
-	area_button.text="Расширить зал (%d/2) · 450 мон." % area_level
-	area_button.disabled=area_level>=2 or cash<450
+	area_button.text="Купить участок %d · %d мон." % [area_level, LAND_PRICES[mini(area_level-1,2)]] if area_level<4 else "Все торговые участки куплены"
+	area_button.disabled=area_level>=4 or cash<LAND_PRICES[mini(area_level-1,2)]
+	parking_button.text="Парковка куплена" if parking_owned else "Купить парковку · 350 мон."
+	parking_button.disabled=parking_owned or cash<350
 	promo_button.text="Реклама: %d сек." % ceili(promo_left) if promo_left>0 else "Реклама · 60 мон. / 45 сек."
 	promo_button.disabled=promo_left>0 or cash<60
 	open_button.text = "Закрыть магазин" if running else "Открыть магазин"
@@ -450,9 +456,9 @@ func _process(delta):
 			refresh()
 			save_game()
 		elapsed += delta
-		if running and elapsed>=maxf(1.8,6.0-workers*0.6+dirt*0.04-reputation*0.018-(1.4 if promo_left>0 else 0.0)) and customers.size()<6:
+		if running and elapsed>=maxf(1.8,6.0-workers*0.6+dirt*0.04-reputation*0.018-(1.4 if promo_left>0 else 0.0)-(0.65 if parking_owned else 0.0)) and customers.size()<6:
 			elapsed = 0
-			customers.append({"pos":Vector3(-4.1,0,3.65),"phase":0,"item":choose_product(),"timer":0.0,"carry":false,"counter":-1})
+			customers.append({"pos":Vector3(-4.1,0,5.1),"phase":0,"item":choose_product(),"timer":0.0,"carry":false,"counter":-1})
 	for c in customers:
 		if c["phase"]==0:
 			var q = customers.find(c)
@@ -461,7 +467,7 @@ func _process(delta):
 			if move_actor(c,counter(c["counter"])+Vector3(0,0,0.95),delta):
 				c["phase"]=2
 		elif c["phase"]==4:
-			if move_actor(c,Vector3(-4.1,0,3.7),delta):
+			if move_actor(c,Vector3(-4.1,0,5.1),delta):
 				c["phase"]=5
 	customers = customers.filter(func(c): return c["phase"]!=5)
 	for i in range(sellers.size()):
@@ -644,7 +650,7 @@ func save_game():
 			saved_storage[i]+=task["amount"]
 	var f=FileAccess.open(SAVE_PATH,FileAccess.WRITE)
 	if f:
-		f.store_string(JSON.stringify({"version":7,"music_enabled":music_enabled,"area_level":area_level,"reputation":reputation,"promo_left":promo_left,"delivery_duration":delivery_duration,"supplier":supplier,"muted":muted,"rewards":rewards,"inventory_cost":inventory_cost,"prices":prices,"expenses":expenses,"cost_of_sales":cost_of_sales,"lost_sales":lost_sales,"day_number":day_number,"day_clock":day_clock,"placements":placements,"warehouse_level":warehouse_level,"incoming":incoming,"delivery_eta":delivery_eta,"cash":cash,"stock":saved_stock,"storage":saved_storage,"delivery":saved_delivery,"shelf_levels":shelf_levels,"level":level,"sold":sold,"revenue":revenue,"workers":workers,"loaders":loaders,"cleaners":cleaners,"dirt":dirt}))
+		f.store_string(JSON.stringify({"version":7,"music_enabled":music_enabled,"area_level":area_level,"parking_owned":parking_owned,"reputation":reputation,"promo_left":promo_left,"delivery_duration":delivery_duration,"supplier":supplier,"muted":muted,"rewards":rewards,"inventory_cost":inventory_cost,"prices":prices,"expenses":expenses,"cost_of_sales":cost_of_sales,"lost_sales":lost_sales,"day_number":day_number,"day_clock":day_clock,"placements":placements,"warehouse_level":warehouse_level,"incoming":incoming,"delivery_eta":delivery_eta,"cash":cash,"stock":saved_stock,"storage":saved_storage,"delivery":saved_delivery,"shelf_levels":shelf_levels,"level":level,"sold":sold,"revenue":revenue,"workers":workers,"loaders":loaders,"cleaners":cleaners,"dirt":dirt}))
 
 func load_game():
 	if not FileAccess.file_exists(SAVE_PATH):
@@ -658,7 +664,8 @@ func load_game():
 	music_enabled=bool(data.get("music_enabled",true))
 	rewards=data.get("rewards",[])
 	level=maxi(1,int(data.get("level",1)))
-	area_level=clampi(int(data.get("area_level",1)),1,2)
+	area_level=clampi(int(data.get("area_level",1)),1,4)
+	parking_owned=bool(data.get("parking_owned",false))
 	reputation=clampf(float(data.get("reputation",60)),0,100)
 	promo_left=clampf(float(data.get("promo_left",0)),0,45)
 	delivery_duration=maxf(1,float(data.get("delivery_duration",6)))
@@ -806,7 +813,7 @@ func normalize_catalog():
 			values.append(0)
 	while prices.size()<GOODS.size():
 		prices.append(PRICE[prices.size()])
-	while placements.size()<12:
+	while placements.size()<24:
 		placements.append(-1)
 	for i in range(placements.size()):
 		placements[i]=int(placements[i])
@@ -818,7 +825,7 @@ func sum_items(values: Array) -> int:
 	return total
 
 func active_slots() -> int:
-	return 6 if area_level==1 else 12
+	return area_level*6
 
 func active_products() -> Array:
 	var result=[]
@@ -841,12 +848,25 @@ func equipment_cost(i: int) -> int:
 	return 150*maxi(1,shelf_levels[i]) if i<3 else 180+50*shelf_levels[i]
 
 func expand_area():
-	if area_level>=2 or cash<450:
+	if area_level>=4:
 		return
-	area_level=2
-	cash-=450
-	expenses+=450
-	message="Открыт новый торговый зал: ещё 6 площадок!"
+	var cost: int=LAND_PRICES[area_level-1]
+	if cash<cost:
+		return
+	area_level+=1
+	cash-=cost
+	expenses+=cost
+	message="Участок куплен: ещё 6 площадок!"
+	refresh()
+	save_game()
+
+func buy_parking():
+	if parking_owned or cash<350:
+		return
+	cash-=350
+	expenses+=350
+	parking_owned=true
+	message="Парковка открыта. Больше покупателей!"
 	refresh()
 	save_game()
 
