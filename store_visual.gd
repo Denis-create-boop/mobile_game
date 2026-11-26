@@ -1,4 +1,4 @@
-extends Control
+extends SubViewportContainer
 
 var game
 var asset_library=preload("res://asset_library.gd").new()
@@ -75,20 +75,14 @@ var sales_label: Label
 
 func _ready():
 	mouse_filter = Control.MOUSE_FILTER_STOP
+	stretch=true
+	stretch_shrink=1
 	viewport = SubViewport.new()
 	viewport.size = Vector2i(960,640)
 	viewport.own_world_3d = true
-	viewport.msaa_3d = Viewport.MSAA_4X
+	viewport.msaa_3d = Viewport.MSAA_DISABLED if OS.has_feature("web") else Viewport.MSAA_2X
 	viewport.render_target_update_mode = SubViewport.UPDATE_ALWAYS
 	add_child(viewport)
-	render_surface=TextureRect.new()
-	render_surface.texture=viewport.get_texture()
-	render_surface.expand_mode=TextureRect.EXPAND_IGNORE_SIZE
-	render_surface.stretch_mode=TextureRect.STRETCH_SCALE
-	render_surface.mouse_filter=Control.MOUSE_FILTER_IGNORE
-	render_surface.texture_filter=CanvasItem.TEXTURE_FILTER_LINEAR
-	add_child(render_surface)
-	render_surface.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 	stage = Node3D.new()
 	viewport.add_child(stage)
 	var env = WorldEnvironment.new()
@@ -682,7 +676,7 @@ func _process(delta):
 		actor(people[i],c["pos"],c["carry"],delta)
 		var tag: Label3D=people[i].get_meta("order")
 		tag.text=game.GOODS[c["item"]] if c["phase"]<4 and not c["carry"] else ("Оплата" if c["carry"] and c["phase"]<4 else "")
-	status_label.text=("МАГАЗИН ОТКРЫТ" if game.running else "МАГАЗИН ЗАКРЫТ")+" | V19 • 3D: %d / резерв: %d" % [asset_library.loaded_count,asset_library.fallback_count]
+	status_label.text=("МАГАЗИН ОТКРЫТ" if game.running else "МАГАЗИН ЗАКРЫТ")+" | V20 • 3D: %d / резерв: %d" % [asset_library.loaded_count,asset_library.fallback_count]
 	sales_label.position=Vector2(12,size.y-26)
 	sales_label.text="Выручка: %d мон. | Клиентов: %d" % [game.revenue,game.customers.size()]
 
@@ -722,7 +716,7 @@ func add_details():
 
 func toggle_quality():
 	quality_high=not quality_high
-	viewport.msaa_3d=Viewport.MSAA_4X if quality_high else Viewport.MSAA_DISABLED
+	viewport.msaa_3d=Viewport.MSAA_2X if quality_high and not OS.has_feature("web") else Viewport.MSAA_DISABLED
 	scene_light.shadow_enabled=quality_high
 	update_render_resolution()
 
@@ -1086,19 +1080,11 @@ func build_architecture():
 
 # Match the actual screen-space rectangle, including window stretch and high-DPI.
 func update_render_resolution():
-	if viewport==null or size.x<2 or size.y<2:
+	if viewport==null:
 		return
-	var transform_scale: Vector2=get_global_transform_with_canvas().get_scale().abs()
-	var screen_size: Vector2=size*transform_scale
-	var scale_factor: float=1.75 if quality_high else 1.0
-	var target: Vector2=screen_size*scale_factor
-	var limit: float=3200.0 if quality_high else 1600.0
-	if maxf(target.x,target.y)>limit:
-		target*=limit/maxf(target.x,target.y)
-	var wanted=Vector2i(maxi(2,roundi(target.x)),maxi(2,roundi(target.y)))
-	if wanted!=render_size:
-		render_size=wanted
-		viewport.size=wanted
+	# Container owns the render dimensions and maps pointer coordinates.
+	stretch_shrink=1 if quality_high else 2
+	viewport.render_target_update_mode=SubViewport.UPDATE_ALWAYS
 
 # Retail materials: reusable brushed metal, satin wood and transparent glazing.
 func metalize(n: MeshInstance3D, color: Color, rough: float=0.35):

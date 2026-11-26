@@ -180,7 +180,7 @@ func build_ui():
 	hud.add_theme_constant_override("shadow_offset_y",2)
 	hud.size_flags_horizontal=Control.SIZE_EXPAND_FILL
 	open_button=button(overlay_bar,"",toggle_shop)
-	management_toggle=button(overlay_bar,"Покупки ▾",toggle_management)
+	management_toggle=button(overlay_bar,"Покупки +",toggle_management)
 	button(overlay_bar,"Меню",show_menu)
 	var panel=PanelContainer.new()
 	management_panel=panel
@@ -256,8 +256,8 @@ func build_ui():
 	controls_bar.offset_bottom=-12
 	button(controls_bar,"−",func(): visual.zoom(1.15))
 	button(controls_bar,"+",func(): visual.zoom(0.87))
-	button(controls_bar,"↶",func(): visual.rotate_view(-1))
-	button(controls_bar,"↷",func(): visual.rotate_view(1))
+	button(controls_bar,"<",func(): visual.rotate_view(-1))
+	button(controls_bar,">",func(): visual.rotate_view(1))
 	button(controls_bar,"Обзор",func(): visual.overview())
 	hint=Label.new()
 	add_child(hint)
@@ -407,7 +407,7 @@ func expand_shelf(i: int):
 		return
 	build_kind=i
 	management_panel.hide()
-	management_toggle.text="Покупки ▾"
+	management_toggle.text="Покупки +"
 	message="Выберите свободную площадку справа от магазина."
 	refresh()
 
@@ -1056,7 +1056,7 @@ func setup_music():
 
 func toggle_management():
 	management_panel.visible=not management_panel.visible
-	management_toggle.text="Покупки ▴" if management_panel.visible else "Покупки ▾"
+	management_toggle.text="Покупки −" if management_panel.visible else "Покупки +"
 
 func floor_area() -> int:
 	return 10+land_steps*2
