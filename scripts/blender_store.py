@@ -150,7 +150,7 @@ palettes=[
 scene.cycles.samples=64
 scene.render.resolution_x=1600
 scene.render.resolution_y=1110
-for name,floor_c,wall_c,accent_c,wood_c,grout_c in palettes:
+for name,floor_c,wall_c,accent_c,wood_c,grout_c in (palettes[-1:] if "--game-assets" in sys.argv else palettes):
     recolor(tile,floor_c,.42)
     recolor(wall,wall_c,.65)
     recolor(dark,accent_c,.32)
@@ -159,6 +159,61 @@ for name,floor_c,wall_c,accent_c,wood_c,grout_c in palettes:
     folder=out/name
     folder.mkdir(exist_ok=True)
     scene.render.filepath=str(folder/"preview.png")
-    bpy.ops.wm.save_as_mainfile(filepath=str(folder/"store_small_shop.blend"))
-    bpy.ops.render.render(write_still=True)
-    bpy.ops.export_scene.gltf(filepath=str(folder/"store_small_shop.glb"),export_format="GLB",export_lights=True)
+    if "--game-assets" not in sys.argv:
+        bpy.ops.wm.save_as_mainfile(filepath=str(folder/"store_small_shop.blend"))
+        bpy.ops.render.render(write_still=True)
+        bpy.ops.export_scene.gltf(filepath=str(folder/"store_small_shop.glb"),export_format="GLB",export_lights=True)
+
+# Reusable game modules: export selected geometry at its own origin.
+if "--game-assets" in sys.argv:
+    target=Path(sys.argv[sys.argv.index("--game-assets")+1]).resolve()
+    target.mkdir(parents=True,exist_ok=True)
+    def export_module(name, origin, maker):
+        before=set(bpy.data.objects)
+        maker()
+        objects=[o for o in bpy.data.objects if o not in before and o.type=='MESH']
+        bpy.ops.object.select_all(action='DESELECT')
+        for o in objects:
+            o.location-=Vector(origin)
+            o.select_set(True)
+        bpy.context.view_layer.objects.active=objects[0]
+        bpy.ops.export_scene.gltf(filepath=str(target/(name+".glb")),export_format="GLB",use_selection=True,export_apply=True)
+        for o in objects: bpy.data.objects.remove(o,do_unlink=True)
+    def game_shelf():
+        box("Oak plinth",(0,0,.10),(2.5,.9,.20),wood)
+        box("Back",(0,.40,.94),(2.5,.08,1.68),dark)
+        for x in [-1.20,1.20]:
+            box("Post",(x,0,.96),(.075,.86,1.82),steel)
+        for h in [.23,.84,1.45]:
+            box("Shelf",(0,0,h),(2.40,.86,.065),steel,.009)
+            box("Price rail",(0,-.43,h),(2.40,.035,.065),white,.005)
+            for j in range(4): box("Label",(-.88+j*.58,-.455,h),(.19,.012,.038),dark,.002)
+        box("Header",(0,.15,1.86),(2.5,.46,.12),dark)
+        box("LED",(0,-.29,1.78),(2.3,.035,.025),glow,.004)
+    def game_cold():
+        game_shelf()
+        for x in [-1.22,0,1.22]: box("Cold frame",(x,-.47,1.01),(.055,.065,1.56),steel)
+        for x in [-.09,.09]: box("Handle",(x,-.51,1.05),(.035,.065,.28),steel)
+    def game_checkout():
+        checkout(0,0)
+        for o in list(bpy.context.selected_objects): pass
+    def game_shell():
+        box("Foundation",(0,0,-.25),(10.4,8.4,.45),dark)
+        box("Grout bed",(0,0,-.025),(10,8,.04),grout)
+        for i in range(20):
+            for j in range(16):
+                box("Porcelain",(-4.75+i*.5,-3.75+j*.5,.012),(.493,.493,.035),tile,.003)
+        box("Rear wall",(0,4,1.0),(10.3,.18,2),wall)
+        box("Left wall",(-5,0,1.0),(.18,8,2),wall)
+        box("Rear cap",(0,4,2.04),(10.35,.26,.12),dark)
+        box("Left cap",(-5,0,2.04),(.26,8,.12),dark)
+        # Clear entrance at x=-3.4, matching the gameplay door.
+        for x in [-.95,1.5,3.95]:
+            box("Front plinth",(x,-4,.13),(2.35,.18,.26),dark)
+            box("Front lintel",(x,-4,1.97),(2.35,.18,.10),dark)
+            for dx in [-1.15,1.15]:
+                box("Mullion",(x+dx,-4,1.05),(.07,.13,1.8),steel)
+    export_module("shelf",(0,0,0),game_shelf)
+    export_module("cold",(0,0,0),game_cold)
+    export_module("checkout",(0,0,0),game_checkout)
+    export_module("shell",(0,0,0),game_shell)

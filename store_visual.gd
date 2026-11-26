@@ -1,6 +1,7 @@
 extends Control
 
 var game
+var premium_models: Dictionary = {}
 var asset_library=preload("res://asset_library.gd").new()
 var character_serial: int=0
 var viewport: SubViewport
@@ -97,12 +98,12 @@ func _ready():
 	e.background_color = Color("#dce5ed")
 	e.ambient_light_source = Environment.AMBIENT_SOURCE_COLOR
 	e.ambient_light_color = Color("#f0f2f5")
-	e.ambient_light_energy = 0.53
+	e.ambient_light_energy = 0.34
 	env.environment = e
 	stage.add_child(env)
 	var light = DirectionalLight3D.new()
 	light.rotation_degrees = Vector3(-57,-38,0)
-	light.light_energy = 1.10
+	light.light_energy = 0.85
 	light.light_color=Color("#fff8ef")
 	scene_light=light
 	light.shadow_enabled = true
@@ -117,15 +118,18 @@ func _ready():
 	stage.add_child(camera)
 	camera.look_at_from_position(Vector3(16,15,18),Vector3(3,0.3,0))
 	camera.current = true
+	load_premium_models()
 	build_store()
 	build_extension()
 	decorate_store()
-	add_details()
+	if not premium_models.has("shell"):
+		add_details()
 	add_landscaping()
 	build_city()
 	build_infrastructure()
 	build_district()
-	add_merchandising()
+	if not premium_models.has("shelf"):
+		add_merchandising()
 	build_architecture()
 	reset_view()
 	print("Market assets loaded: ",asset_library.catalog.get("market",{}).size())
@@ -296,28 +300,31 @@ func sign_text(parent: Node3D, pos: Vector3, value: String, color: Color, pixel:
 	n.position = pos
 
 func build_store():
-	var wood = Color("#a88b72")
-	var mint = Color("#304b68")
-	var cream = Color("#f0eee8")
-	box(stage,Vector3(0,-0.32,0),Vector3(10.4,0.5,8.4),Color("#8f969b"))
-	make_floor(stage,Vector3(0,-0.05,0),Vector2(10,8),Color("#e9e7e1"))
-	box(stage,Vector3(0,0.95,-4.0),Vector3(10.3,1.9,0.18),cream)
-	box(stage,Vector3(-5,0.95,0),Vector3(0.18,1.9,8),cream)
-	box(stage,Vector3(0,1.98,-4.0),Vector3(10.45,0.17,0.29),mint)
-	box(stage,Vector3(-5,1.98,0),Vector3(0.29,0.17,8.1),mint)
-	for x in [-3.6,-0.1,3.4]:
-		box(stage,Vector3(x,1.05,-3.88),Vector3(2.2,1.15,0.05),Color("#c7cdd2"))
-		box(stage,Vector3(x,1.05,-3.84),Vector3(2.0,0.96,0.06),Color("#93b7ce"))
-		box(stage,Vector3(x,1.05,-3.79),Vector3(0.06,0.96,0.04),cream)
-		box(stage,Vector3(x,1.05,-3.79),Vector3(2.0,0.06,0.04),cream)
+	var wood = Color("#9c714a")
+	var mint = Color("#343b43")
+	var cream = Color("#8d959d")
+	if not spawn_premium("shell",stage,Vector3.ZERO,0.0):
+		box(stage,Vector3(0,-0.32,0),Vector3(10.4,0.5,8.4),Color("#8f969b"))
+		make_floor(stage,Vector3(0,-0.05,0),Vector2(10,8),Color("#545e66"))
+		box(stage,Vector3(0,0.95,-4.0),Vector3(10.3,1.9,0.18),cream)
+		box(stage,Vector3(-5,0.95,0),Vector3(0.18,1.9,8),cream)
+		box(stage,Vector3(0,1.98,-4.0),Vector3(10.45,0.17,0.29),mint)
+		box(stage,Vector3(-5,1.98,0),Vector3(0.29,0.17,8.1),mint)
+		for x in [-3.6,-0.1,3.4]:
+			box(stage,Vector3(x,1.05,-3.88),Vector3(2.2,1.15,0.05),Color("#c7cdd2"))
+			box(stage,Vector3(x,1.05,-3.84),Vector3(2.0,0.96,0.06),Color("#93b7ce"))
+			box(stage,Vector3(x,1.05,-3.79),Vector3(0.06,0.96,0.04),cream)
+			box(stage,Vector3(x,1.05,-3.79),Vector3(2.0,0.06,0.04),cream)
 	for i in range(3):
 		var x = -3.25 + i*3.1
 		var section_color: Color=[Color("#c98b42"),Color("#4386ad"),Color("#6f9855")][i]
 		var shelf = Node3D.new()
 		stage.add_child(shelf)
 		shelf.position = Vector3(x,0,-2.1)
-		var fixture=asset_library.spawn("market",["shelfboxes" if i!=1 else "freezersstanding"],shelf,Vector3.ZERO,Vector3(2.5,1.82,0.95))
-		if fixture==null:
+		var fixture_ok: bool=spawn_premium("cold" if i==1 else "shelf",shelf,Vector3.ZERO,0.0)
+		if not fixture_ok:
+			fixture_ok=asset_library.spawn("market",["shelfboxes" if i!=1 else "freezersstanding"],shelf,Vector3.ZERO,Vector3(2.5,1.82,0.95))!=null
+		if not fixture_ok:
 			box(shelf,Vector3(0,0.9,-0.38),Vector3(2.4,1.8,0.12),wood)
 			for y in [0.22,0.83,1.44]:
 				box(shelf,Vector3(0,y,0),Vector3(2.5,0.11,0.95),cream)
@@ -372,7 +379,7 @@ func build_store():
 		var counter = Node3D.new()
 		stage.add_child(counter)
 		counter.position = game.counter(i)
-		if asset_library.spawn("market",["checkout","cashregister","counter"],counter,Vector3.ZERO,Vector3(2.3,1.3,0.85))==null:
+		if not spawn_premium("checkout",counter,Vector3.ZERO,PI/2) and asset_library.spawn("market",["checkout","cashregister","counter"],counter,Vector3.ZERO,Vector3(2.3,1.3,0.85))==null:
 			box(counter,Vector3(0,0.48,0),Vector3(2.2,0.96,0.8),mint)
 			box(counter,Vector3(0,1.0,0),Vector3(2.3,0.13,0.85),cream)
 			box(counter,Vector3(-0.3,1.09,0),Vector3(1.2,0.07,0.6),Color("#39484b"))
@@ -439,8 +446,8 @@ func decorate_store():
 		box(stage,Vector3(x,0.018,3.9),Vector3(0.65,0.025,0.07),gold)
 
 func build_extension():
-	var cream=Color("#f0eee8")
-	var mint=Color("#304b68")
+	var cream=Color("#8d959d")
+	var mint=Color("#343b43")
 	var wood=Color("#a98c72")
 	# Connected strips along the right edge of the original shop.
 	expansion_base=Node3D.new()
@@ -503,19 +510,21 @@ func install_rack(slot: int, kind: int):
 	var rack=Node3D.new()
 	stage.add_child(rack)
 	rack.position=game.build_slot(slot)
-	var color=Color("#63a9c4") if kind in [1,3,8,11] else Color("#304b68")
+	var color=Color("#63a9c4") if kind in [1,3,8,11] else Color("#343b43")
 	var cream=Color("#f1e8d4")
 	var height=1.15 if kind in [2,7] else 1.8
 	var fixture_names=["displayfruit"] if kind in [2,7] else (["freezersstanding"] if kind in [1,3,8,11] else ["shelfboxes"])
-	var fixture=asset_library.spawn("market",fixture_names,rack,Vector3.ZERO,Vector3(2.25,height,0.9))
-	if fixture==null:
+	var fixture_ok: bool=spawn_premium("cold" if kind in [1,3,8,11] else "shelf",rack,Vector3.ZERO,0.0,Vector3(0.90,1.0,1.0))
+	if not fixture_ok:
+		fixture_ok=asset_library.spawn("market",fixture_names,rack,Vector3.ZERO,Vector3(2.25,height,0.9))!=null
+	if not fixture_ok:
 		box(rack,Vector3(0,height/2,-0.36),Vector3(2.25,height,0.12),color)
 		for x in [-1.09,1.09]:
 			box(rack,Vector3(x,height/2,0),Vector3(0.1,height,0.9),color)
 	var items: Array=[]
 	for y in [0.22,0.75,1.28]:
-		var yy: float=y*0.62 if kind in [2,7] else y
-		if fixture==null:
+		var yy: float=y if premium_models.has("shelf") else (y*0.62 if kind in [2,7] else y)
+		if not fixture_ok:
 			box(rack,Vector3(0,yy,0),Vector3(2.25,0.09,0.9),cream)
 		for j in range(4):
 			var p=Vector3(-0.79+j*0.52,yy+0.18,0.04)
@@ -733,7 +742,7 @@ func _process(delta):
 		actor(people[i],c["pos"],c["carry"],delta)
 		var tag: Label3D=people[i].get_meta("order")
 		tag.text=game.GOODS[c["item"]] if c["phase"]<4 and not c["carry"] else ("Оплата" if c["carry"] and c["phase"]<4 else "")
-	status_label.text=("МАГАЗИН ОТКРЫТ" if game.running else "МАГАЗИН ЗАКРЫТ")+" | V25 • 3D: %d / резерв: %d" % [asset_library.loaded_count,asset_library.fallback_count]
+	status_label.text=("МАГАЗИН ОТКРЫТ" if game.running else "МАГАЗИН ЗАКРЫТ")+" | V26 • 3D: %d / резерв: %d" % [asset_library.loaded_count,asset_library.fallback_count]
 	sales_label.position=Vector2(12,size.y-26)
 	sales_label.text="Выручка: %d мон. | Клиентов: %d" % [game.revenue,game.customers.size()]
 
@@ -1156,3 +1165,22 @@ func pedestrians_on_road() -> bool:
 		if bool(p.get("crossing",false)):
 			return true
 	return false
+
+func load_premium_models():
+	for kind in ["shell","shelf","cold","checkout"]:
+		var path: String="res://assets/premium/"+kind+".glb"
+		if ResourceLoader.exists(path):
+			var resource=load(path)
+			if resource is PackedScene:
+				premium_models[kind]=resource
+	print("Premium Blender modules: ",premium_models.size())
+
+func spawn_premium(kind: String, parent: Node3D, pos: Vector3, angle: float, dimensions_scale: Vector3=Vector3.ONE) -> bool:
+	if not premium_models.has(kind):
+		return false
+	var node: Node3D=premium_models[kind].instantiate()
+	parent.add_child(node)
+	node.position=pos
+	node.rotation.y=angle
+	node.scale=dimensions_scale
+	return true
