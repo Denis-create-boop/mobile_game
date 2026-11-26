@@ -46,6 +46,9 @@ var street_people: Array[Node3D] = []
 var signal_phase: int = 0
 var signal_time: float = 0.0
 var district_models: Array[Node3D] = []
+var facade_title: Label3D
+var facade_tiers: Array[Node3D] = []
+var expansion_base: Node3D
 var growth_tiles: Array[Node3D] = []
 var last_road: int = 0
 var last_cross: int = -1
@@ -67,7 +70,7 @@ func _ready():
 	stretch = true
 	mouse_filter = Control.MOUSE_FILTER_STOP
 	viewport = SubViewport.new()
-	viewport.size = Vector2i(640,420)
+	viewport.size = Vector2i(960,640)
 	viewport.own_world_3d = true
 	viewport.msaa_3d = Viewport.MSAA_4X
 	viewport.render_target_update_mode = SubViewport.UPDATE_ALWAYS
@@ -77,19 +80,20 @@ func _ready():
 	var env = WorldEnvironment.new()
 	var e = Environment.new()
 	e.background_mode = Environment.BG_COLOR
-	e.background_color = Color("#a9c4cd")
+	e.background_color = Color("#c2d7e3")
 	e.ambient_light_source = Environment.AMBIENT_SOURCE_COLOR
-	e.ambient_light_color = Color("#c4d5d4")
+	e.ambient_light_color = Color("#d9e4f0")
 	e.ambient_light_energy = 0.65
 	env.environment = e
 	stage.add_child(env)
 	var light = DirectionalLight3D.new()
 	light.rotation_degrees = Vector3(-57,-38,0)
-	light.light_energy = 1.15
+	light.light_energy = 1.25
+	light.light_color=Color("#fff1dc")
 	scene_light=light
 	light.shadow_enabled = true
 	light.directional_shadow_max_distance=30.0
-	light.shadow_bias=0.08
+	light.shadow_bias=0.04
 	light.shadow_normal_bias=0.55
 	stage.add_child(light)
 	camera = Camera3D.new()
@@ -108,6 +112,7 @@ func _ready():
 	build_infrastructure()
 	build_district()
 	add_merchandising()
+	build_architecture()
 	reset_view()
 	print("Market assets loaded: ",asset_library.catalog.get("market",{}).size())
 	status_label = Label.new()
@@ -131,8 +136,8 @@ func _ready():
 
 func reset_view():
 	orbit=0.70
-	camera_zoom=10.5
-	zoom_goal=10.5
+	camera_zoom=12.5
+	zoom_goal=12.5
 	focus=Vector3(-0.5,0.5,0.3)
 	focus_goal=focus
 	update_camera()
@@ -396,10 +401,12 @@ func build_extension():
 	var mint=Color("#168d80")
 	var wood=Color("#b88c62")
 	# Additional retail wing with accessible construction pads.
-	box(stage,Vector3(8.6,-0.29,0),Vector3(8.2,0.48,8.4),Color("#688e82"))
-	make_floor(stage,Vector3(8.6,-0.05,0),Vector2(8.2,8),Color("#dddcd4"))
-	box(stage,Vector3(8.6,0.85,-4),Vector3(8.3,1.7,0.18),cream)
-	box(stage,Vector3(8.6,1.77,-4),Vector3(8.3,0.12,0.26),mint)
+	expansion_base=Node3D.new()
+	stage.add_child(expansion_base)
+	box(expansion_base,Vector3(8.6,-0.29,0),Vector3(8.2,0.48,8.4),Color("#688e82"))
+	make_floor(expansion_base,Vector3(8.6,-0.05,0),Vector2(8.2,8),Color("#dddcd4"))
+	box(expansion_base,Vector3(8.6,0.85,-4),Vector3(8.3,1.7,0.18),cream)
+	box(expansion_base,Vector3(8.6,1.77,-4),Vector3(8.3,0.12,0.26),mint)
 	annex=Node3D.new()
 	stage.add_child(annex)
 	box(annex,Vector3(8.6,-0.29,5.8),Vector3(8.2,0.48,4.4),Color("#688e82"))
@@ -579,6 +586,16 @@ func _process(delta):
 	camera_zoom=lerpf(camera_zoom,zoom_goal,minf(1,delta*6))
 	update_camera()
 	var displayed=[12,12,12,0,0,0,0,0,0,0,0,0]
+	expansion_base.visible=game.land_steps>0 or game.build_kind>=0 or game.placements.count(-1)<24
+	var tier: int=0
+	match game.business_name():
+		"Магазин": tier=1
+		"Мини-маркет": tier=2
+		"Супермаркет": tier=3
+		"Торговый центр": tier=4
+	facade_title.text=game.business_name().to_upper()
+	for i in range(facade_tiers.size()):
+		facade_tiers[i].visible=i==tier
 	annex.visible=game.area_level>=2
 	for i in range(land_wings.size()):
 		land_wings[i].visible=game.area_level>=i+3
@@ -670,7 +687,7 @@ func _process(delta):
 		actor(people[i],c["pos"],c["carry"],delta)
 		var tag: Label3D=people[i].get_meta("order")
 		tag.text=game.GOODS[c["item"]] if c["phase"]<4 and not c["carry"] else ("Оплата" if c["carry"] and c["phase"]<4 else "")
-	status_label.text=("МАГАЗИН ОТКРЫТ" if game.running else "МАГАЗИН ЗАКРЫТ")+" | V14 • 3D: %d / резерв: %d" % [asset_library.loaded_count,asset_library.fallback_count]
+	status_label.text=("МАГАЗИН ОТКРЫТ" if game.running else "МАГАЗИН ЗАКРЫТ")+" | V15 • 3D: %d / резерв: %d" % [asset_library.loaded_count,asset_library.fallback_count]
 	sales_label.position=Vector2(12,size.y-28)
 	sales_label.text="Выручка: %d мон. | Клиентов: %d" % [game.revenue,game.customers.size()]
 
@@ -829,8 +846,7 @@ func build_city():
 	# Open front facade: glass side panels preserve the cutaway view.
 	for x in [-4.82,-2.0]:
 		box(stage,Vector3(x,1.05,4.04),Vector3(0.12,2.1,0.16),metal)
-	box(stage,Vector3(-3.4,2.28,4.04),Vector3(2.95,0.42,0.24),Color("#168d80"))
-	sign_text(stage,Vector3(-3.4,2.28,4.19),"MARKET",Color.WHITE,0.006)
+	# Front identity is built in build_architecture().
 
 # Independent arrival clocks for each lane; following cars keep a safe gap.
 func update_traffic(delta: float):
@@ -1009,3 +1025,65 @@ func build_district():
 					box(root,Vector3(x-0.5+j*0.5,1.25,-1.5),Vector3(0.34,0.24,0.38),accent.lightened(j*0.15))
 		district_models.append(root)
 		root.hide()
+
+func build_architecture():
+	var brick=Color("#b17d61")
+	var dark=Color("#293a40")
+	var cream=Color("#f5e7d2")
+	var glass=Color("#7fa7b6")
+	# Paved forecourt, with a low kerb and alternating stone joints.
+	box(stage,Vector3(0,-0.15,5.0),Vector3(10.5,0.18,1.75),Color("#b6b6ad"))
+	make_floor(stage,Vector3(0,-0.10,5.0),Vector2(10.4,1.7),Color("#c7c1b6"))
+	box(stage,Vector3(0,-0.05,5.85),Vector3(10.5,0.16,0.14),cream)
+	# Real depth on the cutaway walls, brick courses and dark window frames.
+	for x in [-4.8,-2.45,0.95,4.8]:
+		box(stage,Vector3(x,1.08,-3.73),Vector3(0.20,2.15,0.22),brick)
+	for y in [0.23,0.42,0.61]:
+		box(stage,Vector3(0,y,-3.77),Vector3(9.8,0.025,0.06),cream)
+	for x in [-3.6,-0.1,3.4]:
+		for side in [-1,1]:
+			box(stage,Vector3(x+side*1.06,1.06,-3.68),Vector3(0.09,1.13,0.10),dark)
+		for y in [0.52,1.60]:
+			box(stage,Vector3(x,y,-3.68),Vector3(2.12,0.09,0.10),dark)
+		box(stage,Vector3(x,0.48,-3.58),Vector3(2.25,0.08,0.32),cream)
+	# Front shop window and door frames; no opaque roof over gameplay.
+	for x in [-4.82,-2.02,4.78]:
+		box(stage,Vector3(x,1.23,4.10),Vector3(0.18,2.46,0.22),dark)
+	for x in [-1.78,4.55]:
+		box(stage,Vector3(x,0.52,4.08),Vector3(0.25,1.04,0.25),brick)
+	box(stage,Vector3(-3.4,2.60,4.10),Vector3(3.12,0.63,0.28),dark)
+	facade_title=Label3D.new()
+	facade_title.font_size=64
+	facade_title.pixel_size=0.006
+	facade_title.modulate=cream
+	facade_title.outline_size=0
+	stage.add_child(facade_title)
+	facade_title.position=Vector3(-3.4,2.60,4.26)
+	# Each business stage gets its own distinct frontage.
+	for tier in range(5):
+		var root=Node3D.new()
+		stage.add_child(root)
+		var accent: Color=[Color("#ad543f"),Color("#296b57"),Color("#245c85"),Color("#3c435b"),Color("#92744e")][tier]
+		var width: float=3.2+float(tier)*1.6
+		var center: float=-3.4+float(tier)*0.8
+		box(root,Vector3(center,2.13,4.40),Vector3(width,0.13,1.00),accent)
+		for j in range(ceili(width/0.32)):
+			var x: float=center-width*0.5+0.16+float(j)*0.32
+			box(root,Vector3(x,2.02,4.89),Vector3(0.30,0.20,0.09),cream if j%2==0 else accent)
+		if tier>0:
+			box(root,Vector3(center,2.92,-3.92),Vector3(width,0.42,0.30),accent)
+			for j in range(tier+1):
+				box(root,Vector3(center-width*0.4+j*width*0.8/maxi(1,tier),2.48,-3.90),Vector3(0.12,0.7,0.28),dark)
+		facade_tiers.append(root)
+		root.hide()
+	# Planters, varied foliage and street furniture along the storefront.
+	for x in [-5.0,4.8]:
+		box(stage,Vector3(x,0.18,5.3),Vector3(0.75,0.46,0.75),brick)
+		box(stage,Vector3(x,0.42,5.3),Vector3(0.82,0.08,0.82),cream)
+		for j in range(5):
+			var angle: float=j*TAU/5.0
+			ball(stage,Vector3(x+cos(angle)*0.22,0.72+0.09*(j%2),5.3+sin(angle)*0.22),Vector3(0.43,0.60,0.43),Color("#48704d").lightened(j*0.06))
+	for x in [0.0,2.0]:
+		box(stage,Vector3(x,0.25,5.3),Vector3(1.25,0.12,0.38),Color("#a77952"))
+		for j in [-1,1]:
+			box(stage,Vector3(x+j*0.49,0.05,5.3),Vector3(0.10,0.32,0.34),dark)

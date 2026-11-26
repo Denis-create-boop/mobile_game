@@ -102,8 +102,12 @@ var rng = RandomNumberGenerator.new()
 
 func _ready():
 	rng.randomize()
+	var fresh_start: bool=Engine.has_meta("market_new_game")
+	if fresh_start:
+		Engine.remove_meta("market_new_game")
 	normalize_catalog()
-	load_game()
+	if not fresh_start:
+		load_game()
 	normalize_catalog()
 	for i in range(workers):
 		add_seller()
@@ -115,7 +119,12 @@ func _ready():
 	setup_sound()
 	setup_music()
 	refresh()
-	show_menu()
+	if fresh_start:
+		message="Новая игра началась. Откройте ларёк!"
+		refresh()
+		save_game()
+	else:
+		show_menu()
 
 func style(bg: Color, radius: int = 12) -> StyleBoxFlat:
 	var s = StyleBoxFlat.new()
@@ -837,7 +846,7 @@ func show_menu():
 	mb.name="MusicToggle"
 	var toggle=button(column,"Звук: "+("выкл." if muted else "вкл."),toggle_sound)
 	toggle.name="SoundToggle"
-	button(column,"Новая игра",confirm_reset)
+	button(column,"Начать новую игру",confirm_reset)
 
 func toggle_sound():
 	muted=not muted
@@ -857,16 +866,29 @@ func show_help():
 
 func confirm_reset():
 	var d=ConfirmationDialog.new()
-	d.title="Начать заново?"
-	d.dialog_text="Текущий игровой прогресс будет удалён."
+	d.title="Начать новую игру?"
+	d.dialog_text="Весь текущий прогресс будет заменён новой игрой."
+	d.ok_button_text="Начать новую игру"
+	d.cancel_button_text="Отмена"
 	add_child(d)
 	d.confirmed.connect(func():
-		if FileAccess.file_exists(SAVE_PATH):
-			DirAccess.remove_absolute(ProjectSettings.globalize_path(SAVE_PATH))
-		get_tree().reload_current_scene()
+		d.queue_free()
+		reset_new_game.call_deferred()
 	)
 	d.canceled.connect(d.queue_free)
-	d.popup_centered()
+	d.close_requested.connect(d.queue_free)
+	d.popup_centered(Vector2i(400,170))
+
+func reset_new_game():
+	set_process(false)
+	Engine.set_meta("market_new_game",true)
+	var error: int=get_tree().reload_current_scene()
+	if error!=OK:
+		Engine.remove_meta("market_new_game")
+		set_process(true)
+		message="Не удалось перезапустить игру. Код: "+str(error)
+		menu.hide()
+		refresh()
 
 func array_value(values: Array, i: int, fallback: int) -> int:
 	return int(values[i]) if i<values.size() else fallback
