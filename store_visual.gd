@@ -1,4 +1,4 @@
-extends SubViewportContainer
+extends Control
 
 var game
 var asset_library=preload("res://asset_library.gd").new()
@@ -26,6 +26,9 @@ var materials: Dictionary = {}
 var mesh_cache: Dictionary = {}
 var scene_light: DirectionalLight3D
 var quality_high: bool = true
+var render_surface: TextureRect
+var render_size: Vector2i = Vector2i.ZERO
+var resize_clock: float = 0.0
 var crates: Array = []
 var dirt_marks: Array = []
 var delivery_boxes: Array = []
@@ -67,7 +70,6 @@ var status_label: Label
 var sales_label: Label
 
 func _ready():
-	stretch = true
 	mouse_filter = Control.MOUSE_FILTER_STOP
 	viewport = SubViewport.new()
 	viewport.size = Vector2i(960,640)
@@ -75,21 +77,29 @@ func _ready():
 	viewport.msaa_3d = Viewport.MSAA_4X
 	viewport.render_target_update_mode = SubViewport.UPDATE_ALWAYS
 	add_child(viewport)
+	render_surface=TextureRect.new()
+	render_surface.texture=viewport.get_texture()
+	render_surface.expand_mode=TextureRect.EXPAND_IGNORE_SIZE
+	render_surface.stretch_mode=TextureRect.STRETCH_SCALE
+	render_surface.mouse_filter=Control.MOUSE_FILTER_IGNORE
+	render_surface.texture_filter=CanvasItem.TEXTURE_FILTER_LINEAR
+	add_child(render_surface)
+	render_surface.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 	stage = Node3D.new()
 	viewport.add_child(stage)
 	var env = WorldEnvironment.new()
 	var e = Environment.new()
 	e.background_mode = Environment.BG_COLOR
-	e.background_color = Color("#c2d7e3")
+	e.background_color = Color("#dce5ed")
 	e.ambient_light_source = Environment.AMBIENT_SOURCE_COLOR
-	e.ambient_light_color = Color("#d9e4f0")
-	e.ambient_light_energy = 0.65
+	e.ambient_light_color = Color("#f0f2f5")
+	e.ambient_light_energy = 0.53
 	env.environment = e
 	stage.add_child(env)
 	var light = DirectionalLight3D.new()
 	light.rotation_degrees = Vector3(-57,-38,0)
-	light.light_energy = 1.25
-	light.light_color=Color("#fff1dc")
+	light.light_energy = 1.10
+	light.light_color=Color("#fff8ef")
 	scene_light=light
 	light.shadow_enabled = true
 	light.directional_shadow_max_distance=30.0
@@ -147,7 +157,7 @@ func overview():
 	zoom_goal=36.0
 
 func zoom(factor: float):
-	zoom_goal=clampf(zoom_goal*factor,6,30)
+	zoom_goal=clampf(zoom_goal*factor,4.5,42.0)
 
 func rotate_view(direction: int):
 	orbit=clampf(orbit+direction*0.35,-0.45,1.45)
@@ -256,18 +266,18 @@ func sign_text(parent: Node3D, pos: Vector3, value: String, color: Color, pixel:
 	n.position = pos
 
 func build_store():
-	var wood = Color("#bb8961")
-	var mint = Color("#168d80")
-	var cream = Color("#dfc29d")
-	box(stage,Vector3(0,-0.32,0),Vector3(10.4,0.5,8.4),Color("#688e82"))
-	make_floor(stage,Vector3(0,-0.05,0),Vector2(10,8),Color("#dddcd4"))
+	var wood = Color("#a88b72")
+	var mint = Color("#304b68")
+	var cream = Color("#f0eee8")
+	box(stage,Vector3(0,-0.32,0),Vector3(10.4,0.5,8.4),Color("#8f969b"))
+	make_floor(stage,Vector3(0,-0.05,0),Vector2(10,8),Color("#e9e7e1"))
 	box(stage,Vector3(0,0.95,-4.0),Vector3(10.3,1.9,0.18),cream)
 	box(stage,Vector3(-5,0.95,0),Vector3(0.18,1.9,8),cream)
 	box(stage,Vector3(0,1.98,-4.0),Vector3(10.45,0.17,0.29),mint)
 	box(stage,Vector3(-5,1.98,0),Vector3(0.29,0.17,8.1),mint)
 	for x in [-3.6,-0.1,3.4]:
-		box(stage,Vector3(x,1.05,-3.88),Vector3(2.2,1.15,0.05),Color("#d0c9b5"))
-		box(stage,Vector3(x,1.05,-3.84),Vector3(2.0,0.96,0.06),Color("#88c2cf"))
+		box(stage,Vector3(x,1.05,-3.88),Vector3(2.2,1.15,0.05),Color("#c7cdd2"))
+		box(stage,Vector3(x,1.05,-3.84),Vector3(2.0,0.96,0.06),Color("#93b7ce"))
 		box(stage,Vector3(x,1.05,-3.79),Vector3(0.06,0.96,0.04),cream)
 		box(stage,Vector3(x,1.05,-3.79),Vector3(2.0,0.06,0.04),cream)
 	for i in range(3):
@@ -375,12 +385,12 @@ func build_store():
 		cleaner_models.append(janitor)
 
 func decorate_store():
-	var wood=Color("#886449")
-	var trim=Color("#3c7264")
-	var gold=Color("#d7ad68")
+	var wood=Color("#66584c")
+	var trim=Color("#34475a")
+	var gold=Color("#c8a46c")
 	# Storefront lettering, wall trim and a small entrance mat.
 	box(stage,Vector3(0,2.35,-3.84),Vector3(4.8,0.62,0.20),trim)
-	sign_text(stage,Vector3(0,2.35,-3.72),"MARKET EMPIRE",Color("#f3dfb0"),0.008)
+	sign_text(stage,Vector3(0,2.35,-3.72),"MARKET EMPIRE",Color("#f4f4f4"),0.008)
 	box(stage,Vector3(-3.5,0.025,3.44),Vector3(1.8,0.03,0.75),trim)
 	for x in [-4.75,4.75,12.3]:
 		box(stage,Vector3(x,0.12,-3.65),Vector3(0.22,0.25,0.45),wood)
@@ -397,30 +407,30 @@ func decorate_store():
 		box(stage,Vector3(x,0.018,3.9),Vector3(0.65,0.025,0.07),gold)
 
 func build_extension():
-	var cream=Color("#dfc29d")
-	var mint=Color("#168d80")
-	var wood=Color("#b88c62")
+	var cream=Color("#f0eee8")
+	var mint=Color("#304b68")
+	var wood=Color("#a98c72")
 	# Additional retail wing with accessible construction pads.
 	expansion_base=Node3D.new()
 	stage.add_child(expansion_base)
-	box(expansion_base,Vector3(8.6,-0.29,0),Vector3(8.2,0.48,8.4),Color("#688e82"))
-	make_floor(expansion_base,Vector3(8.6,-0.05,0),Vector2(8.2,8),Color("#dddcd4"))
+	box(expansion_base,Vector3(8.6,-0.29,0),Vector3(8.2,0.48,8.4),Color("#8f969b"))
+	make_floor(expansion_base,Vector3(8.6,-0.05,0),Vector2(8.2,8),Color("#e9e7e1"))
 	box(expansion_base,Vector3(8.6,0.85,-4),Vector3(8.3,1.7,0.18),cream)
 	box(expansion_base,Vector3(8.6,1.77,-4),Vector3(8.3,0.12,0.26),mint)
 	annex=Node3D.new()
 	stage.add_child(annex)
-	box(annex,Vector3(8.6,-0.29,5.8),Vector3(8.2,0.48,4.4),Color("#688e82"))
-	make_floor(annex,Vector3(8.6,-0.05,5.8),Vector2(8.2,4.4),Color("#dddcd4"))
+	box(annex,Vector3(8.6,-0.29,5.8),Vector3(8.2,0.48,4.4),Color("#8f969b"))
+	make_floor(annex,Vector3(8.6,-0.05,5.8),Vector2(8.2,4.4),Color("#e9e7e1"))
 	for wing in range(2):
 		var hall=Node3D.new()
 		stage.add_child(hall)
 		var z: float=10.2+wing*4.5
-		box(hall,Vector3(8.6,-0.29,z),Vector3(8.2,0.48,4.5),Color("#688e82"))
-		make_floor(hall,Vector3(8.6,-0.05,z),Vector2(8.2,4.5),Color("#dddcd4"))
+		box(hall,Vector3(8.6,-0.29,z),Vector3(8.2,0.48,4.5),Color("#8f969b"))
+		make_floor(hall,Vector3(8.6,-0.05,z),Vector2(8.2,4.5),Color("#e9e7e1"))
 		land_wings.append(hall)
 		var marker=Node3D.new()
 		stage.add_child(marker)
-		box(marker,Vector3(8.6,-0.20,z),Vector3(8.1,0.12,4.4),Color("#849b75"))
+		box(marker,Vector3(8.6,-0.20,z),Vector3(8.1,0.12,4.4),Color("#a2a8a0"))
 		var notice=Label3D.new()
 		notice.text="УЧАСТОК %d • %d мон." % [wing+2,game.LAND_PRICES[wing+1]]
 		notice.billboard=BaseMaterial3D.BILLBOARD_ENABLED
@@ -431,7 +441,7 @@ func build_extension():
 		land_signs.append(marker)
 	for i in range(24):
 		var center: Vector3=game.build_slot(i)
-		var pad=box(stage,center+Vector3(0,0.015,0),Vector3(2.4,0.035,1.65),Color("#91bdab"))
+		var pad=box(stage,center+Vector3(0,0.015,0),Vector3(2.4,0.035,1.65),Color("#92b5d5"))
 		build_pads.append(pad)
 		built_racks.append(null)
 		built_items.append([])
@@ -463,7 +473,7 @@ func install_rack(slot: int, kind: int):
 	var rack=Node3D.new()
 	stage.add_child(rack)
 	rack.position=game.build_slot(slot)
-	var color=Color("#63a9c4") if kind in [1,3,8,11] else Color("#168d80")
+	var color=Color("#63a9c4") if kind in [1,3,8,11] else Color("#304b68")
 	var cream=Color("#f1e8d4")
 	var height=1.15 if kind in [2,7] else 1.8
 	var fixture_names=["displayfruit"] if kind in [2,7] else (["freezersstanding"] if kind in [1,3,8,11] else ["shelfboxes"])
@@ -576,6 +586,10 @@ func _process(delta):
 	if not is_instance_valid(game) or status_label==null:
 		return
 	tick+=delta
+	resize_clock+=delta
+	if resize_clock>=0.20:
+		resize_clock=0.0
+		update_render_resolution()
 	if game.build_kind>=0:
 		focus_goal=Vector3(8.4,0.5,float(game.area_level-1)*2.5)
 		zoom_goal=maxf(zoom_goal,11.5+float(game.area_level-1)*4.0)
@@ -687,7 +701,7 @@ func _process(delta):
 		actor(people[i],c["pos"],c["carry"],delta)
 		var tag: Label3D=people[i].get_meta("order")
 		tag.text=game.GOODS[c["item"]] if c["phase"]<4 and not c["carry"] else ("Оплата" if c["carry"] and c["phase"]<4 else "")
-	status_label.text=("МАГАЗИН ОТКРЫТ" if game.running else "МАГАЗИН ЗАКРЫТ")+" | V15 • 3D: %d / резерв: %d" % [asset_library.loaded_count,asset_library.fallback_count]
+	status_label.text=("МАГАЗИН ОТКРЫТ" if game.running else "МАГАЗИН ЗАКРЫТ")+" | V16 • 3D: %d / резерв: %d" % [asset_library.loaded_count,asset_library.fallback_count]
 	sales_label.position=Vector2(12,size.y-28)
 	sales_label.text="Выручка: %d мон. | Клиентов: %d" % [game.revenue,game.customers.size()]
 
@@ -702,7 +716,7 @@ func add_details():
 		box(stage,Vector3(x,0.95,3.8),Vector3(0.16,1.9,0.20),dark)
 	box(stage,Vector3(-3.4,1.96,3.8),Vector3(2.75,0.18,0.24),dark)
 	for i in range(9):
-		box(stage,Vector3(-4.6+i*0.3,2.14,3.85),Vector3(0.29,0.09,0.54),cream if i%2==0 else Color("#4d8a76"))
+		box(stage,Vector3(-4.6+i*0.3,2.14,3.85),Vector3(0.29,0.09,0.54),cream if i%2==0 else Color("#536e89"))
 	# Price strips, shelf labels, support legs and floor skirting.
 	for i in range(3):
 		var x=-3.25+i*3.1
@@ -729,7 +743,7 @@ func toggle_quality():
 	quality_high=not quality_high
 	viewport.msaa_3d=Viewport.MSAA_4X if quality_high else Viewport.MSAA_DISABLED
 	scene_light.shadow_enabled=quality_high
-	stretch_shrink=1 if quality_high else 2
+	update_render_resolution()
 
 # A single textured floor surface replaces hundreds of individual tile meshes.
 func make_floor(parent: Node3D, pos: Vector3, dimensions: Vector2, base: Color):
@@ -747,11 +761,12 @@ void fragment(){
  vec2 cell=floor(coord);
  vec2 uv=fract(coord);
  float edge=min(min(uv.x,1.0-uv.x),min(uv.y,1.0-uv.y));
- float grout=smoothstep(0.012,0.028,edge);
+ float aa=max(fwidth(edge),0.001);
+ float grout=smoothstep(0.009-aa,0.016+aa,edge);
  float variation=fract(sin(dot(cell,vec2(12.9898,78.233)))*43758.5453);
- float grain=(fract(sin(dot(floor(coord*90.0),vec2(12.9898,78.233)))*43758.5453)-0.5)*0.07;
+ float grain=0.0;
  vec3 tile_color=tint*(0.92+variation*0.10+grain);
- ALBEDO=mix(tint*0.60,tile_color,grout);
+ ALBEDO=mix(tint*0.79,tile_color,grout);
  ROUGHNESS=0.86;
 }"""
 	var material=ShaderMaterial.new()
@@ -760,9 +775,9 @@ void fragment(){
 	tile.material_override=material
 
 func add_landscaping():
-	var asphalt=Color("#526366")
-	var grass=Color("#658b68")
-	var concrete=Color("#b7b2a2")
+	var asphalt=Color("#41454a")
+	var grass=Color("#7b8e69")
+	var concrete=Color("#c4c6c8")
 	box(stage,Vector3(2,-0.56,1),Vector3(68,0.2,70),grass)
 	box(stage,Vector3(2,-0.43,19.5),Vector3(42,0.13,5.4),asphalt)
 	box(stage,Vector3(2,-0.20,16.4),Vector3(42,0.18,1.5),concrete)
@@ -779,9 +794,9 @@ func add_landscaping():
 
 
 func add_merchandising():
-	var teal=Color("#225d57")
+	var teal=Color("#334b65")
 	var ivory=Color("#fff0d4")
-	var accent=Color("#e6a64e")
+	var accent=Color("#d4ae68")
 	for i in range(3):
 		var x=-3.25+i*3.1
 		box(stage,Vector3(x,2.04,-2.1),Vector3(2.52,0.08,0.98),teal)
@@ -835,7 +850,7 @@ func build_city():
 		box(parking,Vector3(x,-0.12,11),Vector3(0.055,0.025,4.6),Color.WHITE)
 	parking_sign=Node3D.new()
 	stage.add_child(parking_sign)
-	box(parking_sign,Vector3(-9,-0.20,11),Vector3(8,0.12,9),Color("#80966e"))
+	box(parking_sign,Vector3(-9,-0.20,11),Vector3(8,0.12,9),Color("#a2a8a0"))
 	var notice=Label3D.new()
 	notice.text="ПАРКОВКА • 350 мон."
 	notice.billboard=BaseMaterial3D.BILLBOARD_ENABLED
@@ -899,7 +914,7 @@ func crossing_open() -> bool:
 	return game.crossing_mode!=0 or signal_phase==3
 
 func build_infrastructure():
-	var asphalt=Color("#485459")
+	var asphalt=Color("#41454a")
 	var white=Color("#f6f2e9")
 	var steel=Color("#536a73")
 	for tier in range(3):
@@ -1027,9 +1042,9 @@ func build_district():
 		root.hide()
 
 func build_architecture():
-	var brick=Color("#b17d61")
+	var brick=Color("#d8d5d0")
 	var dark=Color("#293a40")
-	var cream=Color("#f5e7d2")
+	var cream=Color("#f5f5f3")
 	var glass=Color("#7fa7b6")
 	# Paved forecourt, with a low kerb and alternating stone joints.
 	box(stage,Vector3(0,-0.15,5.0),Vector3(10.5,0.18,1.75),Color("#b6b6ad"))
@@ -1063,7 +1078,7 @@ func build_architecture():
 	for tier in range(5):
 		var root=Node3D.new()
 		stage.add_child(root)
-		var accent: Color=[Color("#ad543f"),Color("#296b57"),Color("#245c85"),Color("#3c435b"),Color("#92744e")][tier]
+		var accent: Color=[Color("#243f5b"),Color("#405b75"),Color("#315f87"),Color("#3c435b"),Color("#8f7550")][tier]
 		var width: float=3.2+float(tier)*1.6
 		var center: float=-3.4+float(tier)*0.8
 		box(root,Vector3(center,2.13,4.40),Vector3(width,0.13,1.00),accent)
@@ -1087,3 +1102,19 @@ func build_architecture():
 		box(stage,Vector3(x,0.25,5.3),Vector3(1.25,0.12,0.38),Color("#a77952"))
 		for j in [-1,1]:
 			box(stage,Vector3(x+j*0.49,0.05,5.3),Vector3(0.10,0.32,0.34),dark)
+
+# Match the actual screen-space rectangle, including window stretch and high-DPI.
+func update_render_resolution():
+	if viewport==null or size.x<2 or size.y<2:
+		return
+	var transform_scale: Vector2=get_global_transform_with_canvas().get_scale().abs()
+	var screen_size: Vector2=size*transform_scale
+	var scale_factor: float=1.5 if quality_high else 1.0
+	var target: Vector2=screen_size*scale_factor
+	var limit: float=2560.0 if quality_high else 1600.0
+	if maxf(target.x,target.y)>limit:
+		target*=limit/maxf(target.x,target.y)
+	var wanted=Vector2i(maxi(2,roundi(target.x)),maxi(2,roundi(target.y)))
+	if wanted!=render_size:
+		render_size=wanted
+		viewport.size=wanted

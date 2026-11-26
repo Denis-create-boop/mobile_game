@@ -148,9 +148,9 @@ func button(parent: Node, value: String, action: Callable) -> Button:
 	b.text = value
 	b.custom_minimum_size.y = 35
 	b.add_theme_font_size_override("font_size", 13)
-	b.add_theme_stylebox_override("normal", style(Color("#356c60")))
-	b.add_theme_stylebox_override("hover", style(Color("#438c77")))
-	b.add_theme_stylebox_override("pressed", style(Color("#1a493e")))
+	b.add_theme_stylebox_override("normal", style(Color("#334f6e")))
+	b.add_theme_stylebox_override("hover", style(Color("#476c94")))
+	b.add_theme_stylebox_override("pressed", style(Color("#233b57")))
 	b.add_theme_stylebox_override("disabled", style(Color("#283b42")))
 	b.pressed.connect(action)
 	parent.add_child(b)
@@ -168,7 +168,7 @@ func build_ui():
 	var header = HBoxContainer.new()
 	root.add_child(header)
 	var title = label(header, "MARKET EMPIRE", 26)
-	title.add_theme_color_override("font_color", Color("#a9e8b0"))
+	title.add_theme_color_override("font_color", Color("#dbe8fa"))
 	title.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	hud = label(header, "", 20)
 	var row = HBoxContainer.new()
@@ -188,13 +188,13 @@ func build_ui():
 	var panel = PanelContainer.new()
 	management_panel=panel
 	panel.custom_minimum_size.x = 318
-	panel.add_theme_stylebox_override("panel", style(Color("#203038")))
+	panel.add_theme_stylebox_override("panel", style(Color("#252c36")))
 	row.add_child(panel)
 	tabs = TabContainer.new()
 	tabs.add_theme_font_size_override("font_size", 13)
-	tabs.add_theme_stylebox_override("panel", style(Color("#17262e")))
-	tabs.add_theme_stylebox_override("tab_selected", style(Color("#356c60"),6))
-	tabs.add_theme_stylebox_override("tab_unselected", style(Color("#263a42"),6))
+	tabs.add_theme_stylebox_override("panel", style(Color("#1a2029")))
+	tabs.add_theme_stylebox_override("tab_selected", style(Color("#334f6e"),6))
+	tabs.add_theme_stylebox_override("tab_unselected", style(Color("#303a48"),6))
 	panel.add_child(tabs)
 	var side = tab_page("Товары")
 	label(side, "ПОСТАВКИ · ПОЛКА / СКЛАД", 15)
@@ -826,7 +826,7 @@ func show_menu():
 		return
 	menu=PanelContainer.new()
 	menu.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
-	menu.add_theme_stylebox_override("panel",style(Color("#10242d"),0))
+	menu.add_theme_stylebox_override("panel",style(Color("#151c26"),0))
 	add_child(menu)
 	var center=CenterContainer.new()
 	menu.add_child(center)
@@ -836,12 +836,14 @@ func show_menu():
 	center.add_child(column)
 	var heading=label(column,"MARKET EMPIRE",40)
 	heading.horizontal_alignment=HORIZONTAL_ALIGNMENT_CENTER
-	heading.add_theme_color_override("font_color",Color("#a9e8b0"))
+	heading.add_theme_color_override("font_color",Color("#dbe8fa"))
 	var subtitle=label(column,"Построй свою торговую империю",19)
 	subtitle.horizontal_alignment=HORIZONTAL_ALIGNMENT_CENTER
 	button(column,"Продолжить игру",func(): menu.hide())
 	button(column,"Как играть",show_help)
-	button(column,"Графика: сменить качество",func(): visual.toggle_quality())
+	var quality_button=button(column,"Графика: высокое качество",func(): visual.toggle_quality())
+	quality_button.name="QualityButton"
+	quality_button.pressed.connect(func(): quality_button.text="Графика: высокое качество" if visual.quality_high else "Графика: стандартное качество")
 	var mb=button(column,"Музыка: "+("вкл." if music_enabled else "выкл."),toggle_music)
 	mb.name="MusicToggle"
 	var toggle=button(column,"Звук: "+("выкл." if muted else "вкл."),toggle_sound)
