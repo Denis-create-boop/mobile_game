@@ -1,10 +1,15 @@
-name: Godot web check
+name: Build and publish Market Empire
 on:
   push:
     branches: [main]
   workflow_dispatch:
 permissions:
   contents: read
+  pages: write
+  id-token: write
+concurrency:
+  group: market-empire-pages
+  cancel-in-progress: false
 jobs:
   web:
     runs-on: ubuntu-latest
@@ -19,6 +24,8 @@ jobs:
           unzip -q /tmp/templates.tpz -d /tmp/godot-templates
           mkdir -p ~/.local/share/godot/export_templates/4.3.stable
           cp -r /tmp/godot-templates/templates/. ~/.local/share/godot/export_templates/4.3.stable/
+      - name: Download game assets
+        run: python3 scripts/install_assets.py
       - name: Import and check scripts
         run: |
           set -o pipefail
@@ -39,3 +46,20 @@ jobs:
         with:
           name: market-empire-web
           path: build/web/
+      - name: Configure Pages
+        uses: actions/configure-pages@v5
+      - name: Prepare Pages artifact
+        run: touch build/web/.nojekyll
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: build/web
+  deploy:
+    needs: web
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - name: Publish to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v4
