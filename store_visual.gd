@@ -37,6 +37,9 @@ var land_signs: Array[Node3D] = []
 var parking: Node3D
 var parking_sign: Node3D
 var traffic: Array[Node3D] = []
+var traffic_rng := RandomNumberGenerator.new()
+var traffic_timers: Array[float] = [0.2, 1.1]
+var traffic_speeds: Dictionary = {}
 var built_racks: Array = []
 var built_items: Array = []
 var truck: Node3D
@@ -569,8 +572,7 @@ func _process(delta):
 		land_signs[i].visible=not land_wings[i].visible
 	parking.visible=game.parking_owned
 	parking_sign.visible=not game.parking_owned
-	for i in range(traffic.size()):
-		traffic[i].position.x=fposmod(tick*(1.8+i*0.25)+i*10.0,40.0)-20.0
+	update_traffic(delta)
 	for i in range(24):
 		var kind: int=game.placements[i]
 		build_pads[i].visible=game.build_kind>=0 and kind<0 and i<game.active_slots()
@@ -650,7 +652,7 @@ func _process(delta):
 		actor(people[i],c["pos"],c["carry"],delta)
 		var tag: Label3D=people[i].get_meta("order")
 		tag.text=game.GOODS[c["item"]] if c["phase"]<4 and not c["carry"] else ("Оплата" if c["carry"] and c["phase"]<4 else "")
-	status_label.text=("МАГАЗИН ОТКРЫТ" if game.running else "МАГАЗИН ЗАКРЫТ")+" | V11 • 3D: %d / резерв: %d" % [asset_library.loaded_count,asset_library.fallback_count]
+	status_label.text=("МАГАЗИН ОТКРЫТ" if game.running else "МАГАЗИН ЗАКРЫТ")+" | V12 • 3D: %d / резерв: %d" % [asset_library.loaded_count,asset_library.fallback_count]
 	sales_label.position=Vector2(12,size.y-28)
 	sales_label.text="Выручка: %d мон. | Клиентов: %d" % [game.revenue,game.customers.size()]
 
@@ -772,17 +774,23 @@ func build_city():
 		cylinder(stage,Vector3(x,1.4,16.4),0.055,3.1,metal)
 		box(stage,Vector3(x,2.95,16.65),Vector3(0.18,0.12,0.65),metal)
 		box(stage,Vector3(x,2.89,16.86),Vector3(0.16,0.035,0.24),Color("#fff1c8"))
-	for i in range(3):
+	traffic_rng.randomize()
+	for i in range(12):
 		var car=Node3D.new()
 		stage.add_child(car)
-		car.position=Vector3(0,-0.3,18.25+i%2*2.2)
-		var paint: Color=[Color("#a23736"),Color("#e6e8e8"),Color("#355d86")][i]
+		car.position=Vector3(-24,-0.3,20.85)
+		car.hide()
+		var paint: Color=[Color("#a23736"),Color("#e6e8e8"),Color("#355d86"),Color("#343c42"),Color("#c4a263"),Color("#4d7770")][i%6]
 		box(car,Vector3(0,0.38,0),Vector3(3.2,0.55,1.35),paint)
 		box(car,Vector3(-0.1,0.78,0),Vector3(1.65,0.48,1.19),paint)
 		for side in [-1,1]:
 			box(car,Vector3(-0.1,0.79,side*0.60),Vector3(1.35,0.31,0.025),glass)
 			for x in [-1.02,1.02]:
 				cylinder(car,Vector3(x,0.26,side*0.68),0.27,0.16,metal).rotation.x=PI/2
+		# Asymmetric lights make the direction visible.
+		for side in [-1,1]:
+			box(car,Vector3(1.61,0.40,side*0.45),Vector3(0.035,0.15,0.24),Color("#fff4cf"))
+			box(car,Vector3(-1.61,0.40,side*0.45),Vector3(0.035,0.15,0.24),Color("#b4242d"))
 		traffic.append(car)
 	parking=Node3D.new()
 	stage.add_child(parking)
@@ -805,3 +813,47 @@ func build_city():
 		box(stage,Vector3(x,1.05,4.04),Vector3(0.12,2.1,0.16),metal)
 	box(stage,Vector3(-3.4,2.28,4.04),Vector3(2.95,0.42,0.24),Color("#168d80"))
 	sign_text(stage,Vector3(-3.4,2.28,4.19),"MARKET",Color.WHITE,0.006)
+
+# Independent arrival clocks for each lane; following cars keep a safe gap.
+func update_traffic(delta: float):
+	for lane in range(2):
+		var direction: float=1.0 if lane==0 else -1.0
+		var lane_z: float=20.85 if lane==0 else 18.15
+		var entry: float=-19.0 if lane==0 else 23.0
+		var exit: float=23.0 if lane==0 else -19.0
+		var moving: Array[Node3D]=[]
+		for car in traffic:
+			if car.visible and int(car.get_meta("lane",-1))==lane:
+				moving.append(car)
+		moving.sort_custom(func(a: Node3D,b: Node3D): return a.position.x*direction>b.position.x*direction)
+		var front: float=INF
+		for car in moving:
+			var progress: float=car.position.x*direction
+			var advance: float=float(traffic_speeds[car])*delta
+			var next: float=minf(progress+advance,front-4.8)
+			car.position.x=maxf(progress,next)*direction
+			if car.position.x*direction>=exit*direction:
+				car.hide()
+				traffic_speeds.erase(car)
+			else:
+				front=car.position.x*direction
+		traffic_timers[lane]-=delta
+		if traffic_timers[lane]>0.0:
+			continue
+		if front-entry*direction<5.5:
+			traffic_timers[lane]=0.35
+			continue
+		var available: Array[Node3D]=[]
+		for car in traffic:
+			if not car.visible:
+				available.append(car)
+		if available.is_empty():
+			traffic_timers[lane]=0.5
+			continue
+		var car: Node3D=available[traffic_rng.randi_range(0,available.size()-1)]
+		car.set_meta("lane",lane)
+		car.position=Vector3(entry,-0.3,lane_z)
+		car.rotation.y=0.0 if lane==0 else PI
+		traffic_speeds[car]=traffic_rng.randf_range(2.7,6.0)
+		car.show()
+		traffic_timers[lane]=traffic_rng.randf_range(1.4,7.5)
