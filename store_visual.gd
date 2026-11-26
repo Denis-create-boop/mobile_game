@@ -126,6 +126,7 @@ func _ready():
 		add_details()
 	add_landscaping()
 	build_city()
+	build_neighborhood()
 	build_infrastructure()
 	build_district()
 	if not premium_models.has("shelf"):
@@ -161,11 +162,11 @@ func reset_view():
 	update_camera()
 
 func overview():
-	focus_goal=Vector3(3,0.5,10)
-	zoom_goal=36.0
+	focus_goal=Vector3(3,0.5,5)
+	zoom_goal=62.0
 
 func zoom(factor: float):
-	zoom_goal=clampf(zoom_goal*factor,4.5,42.0)
+	zoom_goal=clampf(zoom_goal*factor,4.5,72.0)
 
 func rotate_view(direction: int):
 	orbit=wrapf(orbit+direction*0.35,-PI,PI)
@@ -663,6 +664,7 @@ func _process(delta):
 		growth_tiles[i].visible=game.land_steps>=19+i
 	update_infrastructure(delta)
 	update_traffic(delta)
+	update_neighborhood_traffic(delta)
 	for i in range(24):
 		var kind: int=game.placements[i]
 		build_pads[i].visible=game.build_kind>=0 and kind<0 and i<game.active_slots()
@@ -742,7 +744,7 @@ func _process(delta):
 		actor(people[i],c["pos"],c["carry"],delta)
 		var tag: Label3D=people[i].get_meta("order")
 		tag.text=game.GOODS[c["item"]] if c["phase"]<4 and not c["carry"] else ("Оплата" if c["carry"] and c["phase"]<4 else "")
-	status_label.text=("МАГАЗИН ОТКРЫТ" if game.running else "МАГАЗИН ЗАКРЫТ")+" | V28 • 3D: %d / резерв: %d" % [asset_library.loaded_count,asset_library.fallback_count]
+	status_label.text=("МАГАЗИН ОТКРЫТ" if game.running else "МАГАЗИН ЗАКРЫТ")+" | V29 • 3D: %d / резерв: %d" % [asset_library.loaded_count,asset_library.fallback_count]
 	sales_label.position=Vector2(12,size.y-26)
 	sales_label.text="Выручка: %d мон. | Клиентов: %d" % [game.revenue,game.customers.size()]
 
@@ -1202,3 +1204,98 @@ func apply_shell_palette(root: Node):
 		root.material_override=mat(color)
 	for child in root.get_children():
 		apply_shell_palette(child)
+
+# Surrounding streets are independent of the player's upgradeable main road.
+var neighborhood_cars: Array[Node3D]=[]
+var neighborhood_time: float=0.0
+
+func build_neighborhood():
+	var district=Node3D.new()
+	stage.add_child(district)
+	var asphalt=Color("#383d43")
+	var paving=Color("#777b7e")
+	var stripe=Color("#d5d4cd")
+	var steel=Color("#343a40")
+	var lawn=Color("#485747")
+	# Leave the entire shop expansion area (x=5..34) clear.
+	box(district,Vector3(-17,-0.39,0),Vector3(5.6,0.15,65),asphalt)
+	box(district,Vector3(39,-0.39,0),Vector3(5.6,0.15,65),asphalt)
+	box(district,Vector3(11,-0.39,-15),Vector3(56,0.15,5.6),asphalt)
+	box(district,Vector3(11,-0.39,19.5),Vector3(56,0.12,5.6),asphalt)
+	for x in [-17.0,39.0]:
+		for z in range(-30,31,3):
+			if absf(z-19.5)>5 and absf(z+15)>5:
+				box(district,Vector3(x,-0.303,z),Vector3(0.075,0.014,1.45),stripe)
+		for side in [-1,1]:
+			var curb_x: float=x+side*3.55
+			for section in [Vector2(-24,12),Vector2(2.0,28),Vector2(28,7)]:
+				box(district,Vector3(curb_x,-0.27,section.x),Vector3(1.25,0.21,section.y),paving)
+				box(district,Vector3(x+side*2.96,-0.23,section.x),Vector3(0.13,0.23,section.y),stripe)
+	for x in range(-14,38,3):
+		box(district,Vector3(x,-0.30,-15),Vector3(1.45,0.014,0.075),stripe)
+	for z in [-18.55,-11.45]:
+		box(district,Vector3(11,-0.27,z),Vector3(49,0.21,1.25),paving)
+	for cross in [Vector3(-17,0,-15),Vector3(39,0,-15),Vector3(-17,0,19.5),Vector3(39,0,19.5)]:
+		for j in range(7):
+			var d: float=-2.4+j*0.8
+			for side in [-1,1]:
+				box(district,cross+Vector3(d,-0.297,side*4.0),Vector3(0.38,0.015,1.6),stripe)
+				box(district,cross+Vector3(side*4.0,-0.297,d),Vector3(1.6,0.015,0.38),stripe)
+	# Residential and office blocks, well away from the shop.
+	for i in range(5):
+		var x: float=-8.0+i*9.4
+		var h: float=4.5+float(i%3)*1.7
+		neighborhood_building(district,Vector3(x,-0.3,-24),h,i)
+	for i in range(3):
+		neighborhood_building(district,Vector3(-25,-0.3,-6+i*10),5.2+float(i%2)*2.0,i+5)
+	# Pocket park, benches, lamps and a bus shelter.
+	box(district,Vector3(-10,-0.28,-7.5),Vector3(7.5,0.13,6.0),paving)
+	box(district,Vector3(-10,-0.18,-7.5),Vector3(6.6,0.10,4.9),lawn)
+	for pos in [Vector3(-12,-0.12,-9),Vector3(-8,-0.12,-9),Vector3(-12,-0.12,-6),Vector3(-8,-0.12,-6)]:
+		spawn_premium("plant",district,pos,0.0,Vector3(1.8,1.8,1.8))
+	spawn_premium("bench",district,Vector3(-10,-0.12,-5.9),0.0)
+	var shelter=Vector3(8,-0.1,15.5)
+	box(district,shelter+Vector3(0,2.25,0),Vector3(3.6,0.13,1.35),steel)
+	for x in [-1.65,1.65]:
+		box(district,shelter+Vector3(x,1.05,-0.55),Vector3(0.10,2.1,0.10),steel)
+	box(district,shelter+Vector3(0,1.1,-0.58),Vector3(3.3,1.8,0.08),Color("#647d86"))
+	spawn_premium("bench",district,shelter+Vector3(0,0,-0.2),0.0)
+	sign_text(district,shelter+Vector3(0,2.32,0.7),"ОСТАНОВКА",stripe,0.005)
+	for x in [-13.2,35.2]:
+		for z in [-25.0,-8.0,3.0,13.0,27.0]:
+			cylinder(district,Vector3(x,1.25,z),0.055,3.0,steel)
+			box(district,Vector3(x,2.72,z),Vector3(0.52,0.13,0.22),steel)
+			box(district,Vector3(x,2.64,z),Vector3(0.40,0.035,0.16),Color("#e9d6a8"))
+	# Additional traffic on the rear street only; no unsignalled intersection conflicts.
+	for i in range(6):
+		var car: Node3D=traffic[i].duplicate() as Node3D
+		district.add_child(car)
+		car.show()
+		car.rotation.y=0.0 if i%2==0 else PI
+		neighborhood_cars.append(car)
+
+func neighborhood_building(parent: Node3D, pos: Vector3, h: float, variant: int):
+	var root=Node3D.new()
+	parent.add_child(root)
+	root.position=pos
+	var facade: Color=[Color("#777a7c"),Color("#9b9387"),Color("#676e76")][variant%3]
+	var frame=Color("#333b43")
+	var glass=Color("#536e7d")
+	box(root,Vector3(0,0.12,0),Vector3(7.8,0.24,7.0),Color("#777b80"))
+	box(root,Vector3(0,h/2,0),Vector3(6.8,h,5.8),facade)
+	box(root,Vector3(0,h+0.1,0),Vector3(7.0,0.2,6.0),frame)
+	for floor_index in range(maxi(1,int(h/1.5))):
+		var y: float=0.85+floor_index*1.5
+		for x in [-2.2,0.0,2.2]:
+			box(root,Vector3(x,y,2.93),Vector3(1.38,0.92,0.08),frame)
+			box(root,Vector3(x,y,2.98),Vector3(1.20,0.75,0.04),glass)
+	box(root,Vector3(0,0.95,3.02),Vector3(1.2,1.9,0.12),frame)
+	box(root,Vector3(0,2.03,3.32),Vector3(2.0,0.12,0.7),frame)
+
+func update_neighborhood_traffic(delta: float):
+	neighborhood_time+=delta
+	for i in range(neighborhood_cars.size()):
+		var car: Node3D=neighborhood_cars[i]
+		var distance: float=fposmod(neighborhood_time*3.2+float(i/2)*14.0,43.0)
+		var direction: float=1.0 if i%2==0 else -1.0
+		car.position=Vector3(-11.0+distance if direction>0 else 32.0-distance,-0.3,-15.0+direction*1.4)
