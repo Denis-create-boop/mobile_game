@@ -539,7 +539,7 @@ func _process(delta):
 			refresh()
 			save_game()
 		elapsed += delta
-		if running and elapsed>=maxf(1.8,6.0-workers*0.6+dirt*0.04-reputation*0.018-(1.4 if promo_left>0 else 0.0)-(0.65 if parking_owned else 0.0)) and street_queue.size()<18:
+		if running and elapsed>=maxf(1.8,5.8+dirt*0.04-reputation*0.018-(1.4 if promo_left>0 else 0.0)-(0.65 if parking_owned else 0.0)) and street_queue.size()<18:
 			elapsed = 0
 			if parking_owned and rng.randf()<0.32 and customers.size()<customer_limit():
 				parking_visitors+=1
@@ -599,7 +599,7 @@ func service(s: Dictionary, i: int, delta: float):
 		1:
 			if c["phase"]==2:
 				s["phase"]=2
-				s["timer"]=0.6
+				s["timer"]=0.45+rng.randf_range(0.0,0.55)
 				message="Заказ клиента: "+GOODS[item]
 				refresh()
 		2:
@@ -633,7 +633,7 @@ func service(s: Dictionary, i: int, delta: float):
 				s["carry"]=false
 				c["carry"]=true
 				s["phase"]=5
-				s["timer"]=0.9
+				s["timer"]=0.7+rng.randf_range(0.0,0.65)
 		5:
 			s["timer"]-=delta
 			if s["timer"]<=0:
@@ -891,7 +891,7 @@ func show_menu():
 		if child is Button:
 			child.custom_minimum_size.y=52
 			child.add_theme_font_size_override("font_size",20)
-	var version_label=label(column,"V32",14)
+	var version_label=label(column,"V33",14)
 	version_label.horizontal_alignment=HORIZONTAL_ALIGNMENT_CENTER
 
 func toggle_sound():
@@ -968,7 +968,22 @@ func active_products() -> Array:
 
 func choose_product() -> int:
 	var options=active_products()
-	return int(options[rng.randi_range(0,options.size()-1)]) if not options.is_empty() else 0
+	if options.is_empty():
+		return 0
+	var total: float=0.0
+	var weights: Array[float]=[]
+	for item in options:
+		var weight: float=clampf(float(PRICE[item])/maxf(1.0,float(prices[item])),0.35,2.0)
+		if item<3:
+			weight*=1.35
+		weights.append(weight)
+		total+=weight
+	var roll: float=rng.randf_range(0.0,total)
+	for i in range(options.size()):
+		roll-=weights[i]
+		if roll<=0.0:
+			return int(options[i])
+	return int(options.back())
 
 func unlock_level(i: int) -> int:
 	return [1,1,1,2,2,3,3,4,4,5,5,6][i]
