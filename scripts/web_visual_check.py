@@ -7,7 +7,8 @@ release=next(root.glob("release-*")).name
 with sync_playwright() as p:
     browser=p.chromium.launch(headless=True,args=["--no-sandbox","--use-gl=angle","--use-angle=swiftshader","--enable-unsafe-swiftshader"])
     page=browser.new_page(viewport={"width":1280,"height":900})
-    page.on("console",lambda msg: print("BROWSER:",msg.type,msg.text[:600]) if msg.type=="error" else None)
+    page.on("console",lambda msg: print("BROWSER:",msg.type,msg.text[:600],flush=True))
+    page.on("pageerror",lambda err: print("PAGE ERROR:",err,flush=True))
     page.goto("http://127.0.0.1:8765/"+release+"/?visual_test=1",wait_until="load",timeout=120000)
     page.wait_for_timeout(45000)
     page.screenshot(path="/tmp/game.png",timeout=120000)

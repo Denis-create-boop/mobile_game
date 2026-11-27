@@ -17,17 +17,17 @@ concurrency:
   cancel-in-progress: true
 jobs:
   web:
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
       - name: Cache Godot engine and export templates
         id: godot-cache
-        uses: actions/cache@v4
+        uses: actions/cache/restore@v4
         with:
           path: |
             ~/.local/bin/godot
             ~/.local/share/godot/export_templates/4.3.stable
-          key: godot-4.3-stable-ubuntu24-${{ runner.os }}-${{ runner.arch }}-v1
+          key: godot-4.3-stable-${{ runner.os }}-${{ runner.arch }}-v1
       - name: Install Godot 4.3 and templates
         if: steps.godot-cache.outputs.cache-hit != 'true'
         run: |
@@ -39,21 +39,36 @@ jobs:
           unzip -q /tmp/templates.tpz -d /tmp/godot-templates
           mkdir -p ~/.local/share/godot/export_templates/4.3.stable
           cp -r /tmp/godot-templates/templates/. ~/.local/share/godot/export_templates/4.3.stable/
+      - name: Save Godot cache
+        if: steps.godot-cache.outputs.cache-hit != 'true'
+        uses: actions/cache/save@v4
+        with:
+          path: |
+            ~/.local/bin/godot
+            ~/.local/share/godot/export_templates/4.3.stable
+          key: godot-4.3-stable-${{ runner.os }}-${{ runner.arch }}-v1
       - name: Add Godot to PATH
         run: echo "$HOME/.local/bin" >> "$GITHUB_PATH"
       - name: Cache downloaded models
+        id: kenney-cache
         uses: actions/cache@v4
         with:
           path: assets/kenney
-          key: kenney-ubuntu24-${{ runner.os }}-${{ hashFiles('scripts/install_assets.py', 'downloads/**') }}
+          key: kenney-${{ runner.os }}-${{ hashFiles('scripts/install_assets.py', 'downloads/**') }}
       - name: Download game assets
         run: python3 scripts/install_assets.py
+      - name: Save downloaded models
+        if: steps.kenney-cache.outputs.cache-hit != 'true'
+        uses: actions/cache/save@v4
+        with:
+          path: assets/kenney
+          key: kenney-${{ runner.os }}-${{ hashFiles('scripts/install_assets.py', 'downloads/**') }}
       - name: Cache generated Blender modules
         id: premium-cache
         uses: actions/cache@v4
         with:
           path: assets/premium
-          key: premium-glb-ubuntu24-${{ runner.os }}-v1-${{ hashFiles('scripts/blender_store.py') }}
+          key: premium-glb-${{ runner.os }}-v1-${{ hashFiles('scripts/blender_store.py') }}
       - name: Install Blender when required
         if: steps.premium-cache.outputs.cache-hit != 'true' || inputs.art_preview == true
         run: |
@@ -67,6 +82,12 @@ jobs:
       - name: Verify generated modules
         run: |
           for module in shell shelf cold checkout street plant bench; do test -s "assets/premium/$module.glb"; done
+      - name: Save generated Blender modules
+        if: steps.premium-cache.outputs.cache-hit != 'true'
+        uses: actions/cache/save@v4
+        with:
+          path: assets/premium
+          key: premium-glb-${{ runner.os }}-v1-${{ hashFiles('scripts/blender_store.py') }}
       - name: Import and check scripts
         run: |
           set -o pipefail
@@ -85,14 +106,9 @@ jobs:
           test -s "$release/index.html"
           test -s "$release/index.wasm"
           printf '<!doctype html><meta charset="utf-8"><meta http-equiv="refresh" content="0;url=release-%s/"><a href="release-%s/">Open Market Empire</a>' "${GITHUB_SHA:0:12}" "${GITHUB_SHA:0:12}" > build/web/index.html
-      - name: Cache Chromium
-        uses: actions/cache@v4
-        with:
-          path: ~/.cache/ms-playwright
-          key: chromium-ubuntu24-${{ runner.os }}-${{ runner.arch }}-playwright-1.51.0
       - name: Capture browser screenshots
         run: |
-          pip install playwright==1.51.0 pillow
+          pip install playwright pillow
           python -m playwright install --with-deps chromium
           python -m http.server 8765 --directory build/web > /tmp/server.log 2>&1 &
           python scripts/web_visual_check.py
@@ -139,7 +155,7 @@ jobs:
           path: build/web
   deploy:
     needs: web
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-latest
     environment:
       name: github-pages
       url: ${{ steps.deployment.outputs.page_url }}
