@@ -17,4 +17,11 @@ with sync_playwright() as p:
     print("central scene colors",len(colors),"dominant",dominant)
     if len(colors)<45 or dominant>0.60:
         raise SystemExit("Scene appears blank or menu is still visible")
+    for index in range(3):
+        page.wait_for_timeout(10000)
+        page.screenshot(path=f"/tmp/game-stability-{index}.png",timeout=120000)
+        frame=Image.open(f"/tmp/game-stability-{index}.png").convert("RGB").crop((220,180,1060,720)).resize((210,135))
+        counts=Counter(tuple(c//16 for c in rgb) for rgb in frame.getdata())
+        if len(counts)<35 or counts.most_common(1)[0][1]/(210*135)>0.80:
+            raise SystemExit(f"Scene disappeared during sustained rendering: frame {index}")
     browser.close()

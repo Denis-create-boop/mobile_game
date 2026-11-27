@@ -46,6 +46,7 @@ var traffic_timers: Array[float] = [0.2, 1.1, 0.7, 1.8, 2.4, 3.1]
 var road_parts: Array[Node3D] = []
 var cross_roots: Array[Node3D] = []
 var signal_lamps: Array[MeshInstance3D] = []
+var main_cross_marks: Array[MeshInstance3D]=[]
 var street_people: Array[Node3D] = []
 var signal_phase: int = 0
 var signal_time: float = 0.0
@@ -79,7 +80,7 @@ func _ready():
 	viewport = SubViewport.new()
 	viewport.size = Vector2i(960,640)
 	viewport.own_world_3d = true
-	viewport.msaa_3d = Viewport.MSAA_2X
+	viewport.msaa_3d = Viewport.MSAA_DISABLED
 	viewport.render_target_update_mode = SubViewport.UPDATE_ALWAYS
 	add_child(viewport)
 	render_surface=TextureRect.new()
@@ -113,6 +114,8 @@ func _ready():
 	stage.add_child(light)
 	camera = Camera3D.new()
 	camera.projection = Camera3D.PROJECTION_ORTHOGONAL
+	camera.near=0.1
+	camera.far=400.0
 	camera.size = 10.8
 	camera.position = Vector3(10,12,14)
 	stage.add_child(camera)
@@ -173,9 +176,11 @@ func rotate_view(direction: int):
 	update_camera()
 
 func update_camera():
-	camera.size=camera_zoom
+	camera.size=clampf(camera_zoom,4.5,72.0)
 	var target=focus
-	camera.look_at_from_position(target+Vector3(sin(orbit)*17,14,cos(orbit)*17),target)
+	var distance: float=maxf(1.0,camera.size/14.0)
+	camera.look_at_from_position(target+Vector3(sin(orbit)*17,14,cos(orbit)*17)*distance,target)
+	camera.current=true
 
 func pan_map(relative: Vector2):
 	if camera==null or size.y<2:
@@ -744,7 +749,7 @@ func _process(delta):
 		actor(people[i],c["pos"],c["carry"],delta)
 		var tag: Label3D=people[i].get_meta("order")
 		tag.text=game.GOODS[c["item"]] if c["phase"]<4 and not c["carry"] else ("Оплата" if c["carry"] and c["phase"]<4 else "")
-	status_label.text=("МАГАЗИН ОТКРЫТ" if game.running else "МАГАЗИН ЗАКРЫТ")+" | V31 • 3D: %d / резерв: %d" % [asset_library.loaded_count,asset_library.fallback_count]
+	status_label.text=("МАГАЗИН ОТКРЫТ" if game.running else "МАГАЗИН ЗАКРЫТ")+" | V32 • 3D: %d / резерв: %d" % [asset_library.loaded_count,asset_library.fallback_count]
 	sales_label.position=Vector2(12,size.y-26)
 	sales_label.text="Выручка: %d мон. | Клиентов: %d" % [game.revenue,game.customers.size()]
 
@@ -784,7 +789,7 @@ func add_details():
 
 func toggle_quality():
 	quality_high=not quality_high
-	viewport.msaa_3d=Viewport.MSAA_2X if quality_high else Viewport.MSAA_DISABLED
+	viewport.msaa_3d=Viewport.MSAA_DISABLED
 	scene_light.shadow_enabled=quality_high
 	update_render_resolution()
 
@@ -823,10 +828,10 @@ func add_landscaping():
 	var concrete=Color("#7c8185")
 	if not spawn_premium("street",stage,Vector3(2,-0.22,1),0.0):
 		box(stage,Vector3(2,-0.56,1),Vector3(85,0.2,70),Color("#555b60"))
-	box(stage,Vector3(2,-0.43,19.5),Vector3(42,0.13,5.4),asphalt)
+	box(stage,Vector3(2,-0.39,19.5),Vector3(42,0.15,5.4),asphalt)
 	box(stage,Vector3(2,-0.20,16.4),Vector3(42,0.18,1.5),concrete)
 	for i in range(22):
-		box(stage,Vector3(-18+i*1.8,-0.35,19.5),Vector3(0.9,0.025,0.07),Color("#e4d9aa"))
+		box(stage,Vector3(-18+i*1.8,-0.300,19.5),Vector3(0.9,0.025,0.07),Color("#e4d9aa"))
 	for pos in [Vector3(-8.5,-0.3,-4.7),Vector3(3.9,-0.3,-5.1),Vector3(12.8,-0.3,-4.8)]:
 		cylinder(stage,pos+Vector3(0,0.8,0),0.13,1.6,Color("#805d43"))
 		ball(stage,pos+Vector3(0,1.9,0),Vector3(1.5,1.75,1.5),grass.darkened(0.12))
@@ -967,9 +972,9 @@ func build_infrastructure():
 		if tier>0:
 			for side in [-1,1]:
 				var z: float=19.5+side*(1.35+tier*2.7)
-				box(root,Vector3(2,-0.43,z),Vector3(42,0.13,2.7),asphalt)
+				box(root,Vector3(2,-0.39,z),Vector3(42,0.15,2.7),asphalt)
 				for j in range(22):
-					box(root,Vector3(-18+j*1.8,-0.35,z-side*1.35),Vector3(0.9,0.025,0.07),white)
+					box(root,Vector3(-18+j*1.8,-0.300,z-side*1.35),Vector3(0.9,0.025,0.07),white)
 		road_parts.append(root)
 	for mode in range(3):
 		var root=Node3D.new()
@@ -977,7 +982,9 @@ func build_infrastructure():
 		cross_roots.append(root)
 		if mode==0:
 			for j in range(27):
-				box(root,Vector3(CROSS_X,-0.348,11.7+j*0.6),Vector3(2.4,0.015,0.28),white)
+				var z: float=19.5+(j-13)*0.6
+				var mark=box(root,Vector3(CROSS_X,-0.301,z),Vector3(2.4,0.015,0.28),white)
+				main_cross_marks.append(mark)
 			for side in [-1,1]:
 				var x: float=CROSS_X+side*2.1
 				var z: float=19.5+side*7.9
@@ -1011,6 +1018,8 @@ func update_infrastructure(delta: float):
 	if last_road!=game.road_level or last_cross!=game.crossing_mode:
 		last_road=game.road_level
 		last_cross=game.crossing_mode
+		for mark in main_cross_marks:
+			mark.visible=absf(mark.position.z-19.5)+0.14<=float(last_road)*2.7
 		for i in range(road_parts.size()):
 			road_parts[i].visible=i<last_road
 		for i in range(cross_roots.size()):
@@ -1155,11 +1164,11 @@ func update_render_resolution():
 	var screen_size: Vector2=size*transform_scale
 	var scale_factor: float=1.0 if quality_high else 0.8
 	var target: Vector2=screen_size*scale_factor
-	var limit: float=1920.0 if quality_high else 1280.0
+	var limit: float=1440.0 if quality_high else 960.0
 	if maxf(target.x,target.y)>limit:
 		target*=limit/maxf(target.x,target.y)
 	var wanted=Vector2i(maxi(2,roundi(target.x)),maxi(2,roundi(target.y)))
-	if wanted!=render_size:
+	if render_size.x<2 or render_size.y<2 or absi(wanted.x-render_size.x)>48 or absi(wanted.y-render_size.y)>48:
 		render_size=wanted
 		viewport.size=wanted
 
@@ -1220,7 +1229,7 @@ func build_neighborhood():
 	box(district,Vector3(-17,-0.39,0),Vector3(5.6,0.15,65),asphalt)
 	box(district,Vector3(39,-0.39,0),Vector3(5.6,0.15,65),asphalt)
 	box(district,Vector3(11,-0.39,-15),Vector3(56,0.15,5.6),asphalt)
-	box(district,Vector3(11,-0.39,19.5),Vector3(56,0.12,5.6),asphalt)
+	box(district,Vector3(31,-0.39,19.5),Vector3(16,0.15,5.4),asphalt)
 	for x in [-17.0,39.0]:
 		for z in range(-30,31,3):
 			if absf(z-19.5)>5 and absf(z+15)>5:
@@ -1239,7 +1248,8 @@ func build_neighborhood():
 			var d: float=-2.4+j*0.8
 			for side in [-1,1]:
 				box(district,cross+Vector3(d,-0.297,side*4.0),Vector3(0.38,0.015,1.6),stripe)
-				box(district,cross+Vector3(side*4.0,-0.297,d),Vector3(1.6,0.015,0.38),stripe)
+				if (cross.x<0.0 and side==1) or (cross.x>0.0 and side==-1):
+					box(district,cross+Vector3(side*4.0,-0.297,d),Vector3(1.6,0.015,0.38),stripe)
 	# Residential and office blocks, well away from the shop.
 	for i in range(5):
 		var x: float=-8.0+i*9.4
@@ -1369,7 +1379,7 @@ func build_junctions(parent: Node3D):
 			var pedestrian=person([Color("#9a7359"),Color("#637f89"),Color("#746c88")][k])
 			pedestrian.hide()
 			city_pedestrians.append({"node":pedestrian,"junction":index,"offset":float(k)*0.8,"side":1.0 if k%2==0 else -1.0})
-	for i in range(22):
+	for i in range(16):
 		var vehicle=Node3D.new()
 		parent.add_child(vehicle)
 		build_vehicle(vehicle,i+24)
