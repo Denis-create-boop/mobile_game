@@ -744,7 +744,7 @@ func _process(delta):
 		actor(people[i],c["pos"],c["carry"],delta)
 		var tag: Label3D=people[i].get_meta("order")
 		tag.text=game.GOODS[c["item"]] if c["phase"]<4 and not c["carry"] else ("Оплата" if c["carry"] and c["phase"]<4 else "")
-	status_label.text=("МАГАЗИН ОТКРЫТ" if game.running else "МАГАЗИН ЗАКРЫТ")+" | V30 • 3D: %d / резерв: %d" % [asset_library.loaded_count,asset_library.fallback_count]
+	status_label.text=("МАГАЗИН ОТКРЫТ" if game.running else "МАГАЗИН ЗАКРЫТ")+" | V31 • 3D: %d / резерв: %d" % [asset_library.loaded_count,asset_library.fallback_count]
 	sales_label.position=Vector2(12,size.y-26)
 	sales_label.text="Выручка: %d мон. | Клиентов: %d" % [game.revenue,game.customers.size()]
 
@@ -903,8 +903,8 @@ func update_traffic(delta: float):
 	for lane in range(game.road_level*2):
 		var direction: float=1.0 if lane%2==0 else -1.0
 		var lane_z: float=20.85+floori(lane/2.0)*2.7 if lane%2==0 else 18.15-floori(lane/2.0)*2.7
-		var entry: float=-19.0 if direction>0 else 23.0
-		var exit: float=23.0 if direction>0 else -19.0
+		var entry: float=-10.0 if direction>0 else 23.0
+		var exit: float=23.0 if direction>0 else -10.0
 		var moving: Array[Node3D]=[]
 		for car in traffic:
 			if car.visible and int(car.get_meta("lane",-1))==lane:
@@ -1338,9 +1338,11 @@ func build_vehicle(car: Node3D, serial: int):
 		box(car,Vector3(-0.68,0.91,0),Vector3(1.8,1.15,width*0.92),paint)
 
 func build_junctions(parent: Node3D):
-	for index in range(2):
-		var center=Vector3(-17.0 if index==0 else 39.0,-0.30,-15.0)
-		var approaches: Array[Vector3]=[Vector3(0,0,-1),Vector3(0,0,1),Vector3(1 if index==0 else -1,0,0)]
+	for index in range(4):
+		var left: bool=index%2==0
+		var rear: bool=index<2
+		var center=Vector3(-17.0 if left else 39.0,-0.30,-15.0 if rear else 19.5)
+		var approaches: Array[Vector3]=[Vector3(0,0,-1),Vector3(0,0,1),Vector3(1 if left else -1,0,0)]
 		var lamps: Array=[]
 		var walk_lamps: Array[MeshInstance3D]=[]
 		for dir in approaches:
@@ -1367,7 +1369,7 @@ func build_junctions(parent: Node3D):
 			var pedestrian=person([Color("#9a7359"),Color("#637f89"),Color("#746c88")][k])
 			pedestrian.hide()
 			city_pedestrians.append({"node":pedestrian,"junction":index,"offset":float(k)*0.8,"side":1.0 if k%2==0 else -1.0})
-	for i in range(14):
+	for i in range(22):
 		var vehicle=Node3D.new()
 		parent.add_child(vehicle)
 		build_vehicle(vehicle,i+24)
@@ -1397,6 +1399,8 @@ func start_city_vehicle(index: int, junction_id: int, approach: int):
 	var center: Vector3=j["center"]
 	var incoming: Vector3=dirs[approach]
 	var exit_index: int=(approach+1+traffic_rng.randi_range(0,1))%3
+	if junction_id==2:
+		exit_index=1-approach
 	var outgoing: Vector3=dirs[exit_index]
 	var side_in=Vector3(incoming.z,0,-incoming.x)*1.4
 	var side_out=Vector3(-outgoing.z,0,outgoing.x)*1.4
@@ -1438,18 +1442,26 @@ func update_neighborhood_traffic(delta: float):
 		var j: Dictionary=junctions[int(ped["junction"])]
 		var node: Node3D=ped["node"]
 		var elapsed: float=float(j["clock"])-25.0-float(ped["offset"])
-		if city_phase(j)==6 and elapsed>=0.0 and elapsed<=6.5:
+		if elapsed>=-7.0 and elapsed<=6.5:
 			var center: Vector3=j["center"]
+			var side: float=float(ped["side"])
+			var walk: float=clampf(elapsed/6.5,0.0,1.0)
 			node.show()
-			node.position=center+Vector3(lerpf(-3.5,3.5,elapsed/6.5)*float(ped["side"]),0.05,4.0)
-			node.rotation.y=PI/2*float(ped["side"])
+			node.position=center+Vector3(lerpf(-3.5,3.5,walk)*side,0.05,4.0+float(ped["offset"])*0.22)
+			node.rotation.y=PI/2*side
+			if node.has_meta("left") and node.has_meta("right"):
+				var left_leg: Node3D=node.get_meta("left")
+				var right_leg: Node3D=node.get_meta("right")
+				var swing: float=sin(elapsed*9.0)*0.42 if elapsed>0 else 0.0
+				left_leg.rotation.x=swing
+				right_leg.rotation.x=-swing
 		else:
 			node.hide()
 	city_spawn_clock-=delta
 	if city_spawn_clock<=0.0:
 		city_spawn_clock=traffic_rng.randf_range(0.9,3.8)
-		var ji: int=traffic_rng.randi_range(0,1)
-		var approach: int=traffic_rng.randi_range(0,2)
+		var ji: int=traffic_rng.randi_range(0,junctions.size()-1)
+		var approach: int=traffic_rng.randi_range(0,1 if ji==2 else 2)
 		var free_entry: bool=true
 		for car in city_vehicles:
 			if car["active"] and int(car["junction"])==ji and int(car["approach"])==approach and int(car["segment"])==0:
@@ -1473,6 +1485,7 @@ func update_neighborhood_traffic(delta: float):
 		var offset: Vector3=target-node.position
 		var distance: float=offset.length()
 		var desired: float=float(car["max_speed"])
+		var max_advance: float=distance
 		var phase: int=city_phase(j)
 		var green: bool=(int(car["approach"])==2 and phase==3) or (int(car["approach"])!=2 and phase==0)
 		if segment==0:
@@ -1483,12 +1496,14 @@ func update_neighborhood_traffic(delta: float):
 				var ahead: float=(other_node.position-node.position).dot(offset.normalized())
 				if ahead>0.0 and ahead<5.0 and int(other["segment"])<=1:
 					desired=minf(desired,maxf(0.0,(ahead-4.3)*2.0))
+					max_advance=minf(max_advance,maxf(0.0,ahead-4.3))
 		elif segment==1 and int(j["owner"])!=i:
 			desired=0.0
 			if green and int(j["owner"])<0:
 				j["owner"]=i
 				desired=float(car["max_speed"])*0.65
 			else:
+				car["speed"]=0.0
 				continue
 		elif segment<9:
 			desired=minf(desired,3.1)
@@ -1497,7 +1512,7 @@ func update_neighborhood_traffic(delta: float):
 		if distance>0.02:
 			var direction: Vector3=offset/distance
 			node.rotation.y=lerp_angle(node.rotation.y,atan2(-direction.z,direction.x),minf(delta*9.0,1.0))
-			node.position+=direction*minf(distance,speed*delta)
+			node.position+=direction*minf(max_advance,speed*delta)
 		if distance<=0.09:
 			if segment==0:
 				car["speed"]=0.0
