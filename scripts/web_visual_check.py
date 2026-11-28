@@ -9,6 +9,7 @@ with sync_playwright() as p:
     page=browser.new_page(viewport={"width":1280,"height":900})
     page.on("console",lambda msg: print("BROWSER:",msg.type,msg.text[:600],flush=True))
     page.on("pageerror",lambda err: print("PAGE ERROR:",err,flush=True))
+    page.add_init_script("""document.addEventListener('webglcontextlost', e => console.error('WEBGL CONTEXT LOST', e.statusMessage), true); document.addEventListener('webglcontextrestored', () => console.log('WEBGL CONTEXT RESTORED'), true);""")
     page.goto("http://127.0.0.1:8765/"+release+"/?visual_test=1",wait_until="load",timeout=120000)
     page.wait_for_timeout(45000)
     page.screenshot(path="/tmp/game.png",timeout=120000)

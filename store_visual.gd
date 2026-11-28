@@ -9,6 +9,10 @@ var stage: Node3D
 var camera: Camera3D
 var products: Array = []
 var people: Array = []
+var customer_pool: Array[Node3D]=[]
+var street_pool: Array[Node3D]=[]
+var pending_render_size: Vector2i=Vector2i.ZERO
+var render_resize_stable: int=0
 var employees: Array = []
 var last_stock: Array = []
 var last_workers: int = -1
@@ -728,7 +732,13 @@ func _process(delta):
 			var task=game.cleaner_tasks[i]
 			actor(cleaner_models[i],task["pos"],false,delta)
 	while people.size()<game.customers.size():
-		var p=person(Color("#d78c71").lerp(Color("#759cc9"),float(people.size()%4)/3.0))
+		var p: Node3D
+		if not customer_pool.is_empty():
+			p=customer_pool.pop_back()
+			p.show()
+			people.append(p)
+			continue
+		p=person(Color("#d78c71").lerp(Color("#759cc9"),float(people.size()%4)/3.0))
 		add_carry(p)
 		var tag=Label3D.new()
 		tag.position=Vector3(0,1.8,0)
@@ -742,13 +752,15 @@ func _process(delta):
 		p.set_meta("order",tag)
 		people.append(p)
 	while people.size()>game.customers.size():
-		people.pop_back().queue_free()
+		var retired: Node3D=people.pop_back()
+		retired.hide()
+		customer_pool.append(retired)
 	for i in range(people.size()):
 		var c=game.customers[i]
 		actor(people[i],c["pos"],c["carry"],delta)
 		var tag: Label3D=people[i].get_meta("order")
 		tag.text=game.GOODS[c["item"]] if c["phase"]<4 and not c["carry"] else ("Оплата" if c["carry"] and c["phase"]<4 else "")
-	status_label.text=("МАГАЗИН ОТКРЫТ" if game.running else "МАГАЗИН ЗАКРЫТ")+" | V33 • 3D: %d / резерв: %d" % [asset_library.loaded_count,asset_library.fallback_count]
+	status_label.text=("МАГАЗИН ОТКРЫТ" if game.running else "МАГАЗИН ЗАКРЫТ")+" | V34 • 3D: %d / резерв: %d" % [asset_library.loaded_count,asset_library.fallback_count]
 	sales_label.position=Vector2(12,size.y-26)
 	sales_label.text="Выручка: %d мон. | Клиентов: %d" % [game.revenue,game.customers.size()]
 
@@ -1050,11 +1062,18 @@ func update_infrastructure(delta: float):
 		material.emission_enabled=on
 		material.emission=colors[j]
 	while street_people.size()<game.street_queue.size():
-		var p=person(Color("#6b93b7"))
-		add_carry(p)
+		var p: Node3D
+		if not street_pool.is_empty():
+			p=street_pool.pop_back()
+			p.show()
+		else:
+			p=person(Color("#6b93b7"))
+			add_carry(p)
 		street_people.append(p)
 	while street_people.size()>game.street_queue.size():
-		street_people.pop_back().queue_free()
+		var retired: Node3D=street_people.pop_back()
+		retired.hide()
+		street_pool.append(retired)
 	for i in range(street_people.size()):
 		var p: Dictionary=game.street_queue[i]
 		var target: Vector3=p["pos"]
@@ -1167,7 +1186,12 @@ func update_render_resolution():
 	if maxf(target.x,target.y)>limit:
 		target*=limit/maxf(target.x,target.y)
 	var wanted=Vector2i(maxi(2,roundi(target.x)),maxi(2,roundi(target.y)))
-	if wanted!=render_size:
+	if wanted!=pending_render_size:
+		pending_render_size=wanted
+		render_resize_stable=0
+		return
+	render_resize_stable+=1
+	if wanted!=render_size and render_resize_stable>=3:
 		render_size=wanted
 		viewport.size=wanted
 

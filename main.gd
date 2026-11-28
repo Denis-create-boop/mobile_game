@@ -338,6 +338,7 @@ func refresh_finance():
 		return
 	finance_label.text="Репутация: %d%%\nАссортимент: %d/%d\nДень %d · %d%% смены\nВыручка: %d\nСебестоимость продаж: %d\nОперационные расходы: %d\nПрибыль от продаж: %d\nУшли без покупки: %d" % [roundi(reputation),active_products().size(),GOODS.size(),day_number,roundi(day_clock/1.2),revenue,cost_of_sales,expenses,revenue-cost_of_sales-expenses,lost_sales]
 	finance_label.text+="\nПосетители: %d\nУшли из очереди: %d\nПрибыли с парковки: %d" % [visitors_total,indoor_lost,parking_visitors]
+	finance_label.text+="\nОжидают обслуживания: %d\nУ касс: %d/%d\nТоваров в зале: %d\nТоваров на складе: %d" % [customers.filter(func(c): return c["phase"]==0).size(),sellers.filter(func(s): return s["phase"]!=0).size(),workers,sum_items(stock),sum_items(storage)]
 	for i in range(GOODS.size()):
 		price_labels[i].text="%s · %d мон." % [GOODS[i],prices[i]]
 	goals_label.text="Достижения: %d/5\n" % rewards.size()+"ЦЕЛИ\n%s  Продать 50 товаров (%d/50)\n%s  Нанять грузчика\n%s  Построить 3 новых полки" % ["✓" if sold>=50 else "○",mini(sold,50),"✓" if loaders>0 else "○","✓" if placements.size()-placements.count(-1)>=3 else "○"]
@@ -891,7 +892,7 @@ func show_menu():
 		if child is Button:
 			child.custom_minimum_size.y=52
 			child.add_theme_font_size_override("font_size",20)
-	var version_label=label(column,"V33",14)
+	var version_label=label(column,"V34",14)
 	version_label.horizontal_alignment=HORIZONTAL_ALIGNMENT_CENTER
 
 func toggle_sound():
