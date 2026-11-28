@@ -80,7 +80,7 @@ func _ready():
 	viewport = SubViewport.new()
 	viewport.size = Vector2i(960,640)
 	viewport.own_world_3d = true
-	viewport.msaa_3d = Viewport.MSAA_2X
+	viewport.msaa_3d = Viewport.MSAA_DISABLED if OS.has_feature("web") else Viewport.MSAA_2X
 	viewport.render_target_update_mode = SubViewport.UPDATE_ALWAYS
 	add_child(viewport)
 	render_surface=TextureRect.new()
@@ -107,7 +107,7 @@ func _ready():
 	light.light_energy = 0.64
 	light.light_color=Color("#fff8ef")
 	scene_light=light
-	light.shadow_enabled = true
+	light.shadow_enabled = not OS.has_feature("web")
 	light.directional_shadow_max_distance=30.0
 	light.shadow_bias=0.10
 	light.shadow_normal_bias=1.0
@@ -275,8 +275,8 @@ func ball(parent: Node3D, pos: Vector3, dims: Vector3, color: Color) -> MeshInst
 		var b=SphereMesh.new()
 		b.radius=0.5
 		b.height=1.0
-		b.radial_segments=20
-		b.rings=10
+		b.radial_segments=12 if OS.has_feature("web") else 20
+		b.rings=6 if OS.has_feature("web") else 10
 		mesh_cache["sphere"]=b
 	var n=mesh(parent,mesh_cache["sphere"],pos,color)
 	n.scale = dims
@@ -799,8 +799,8 @@ func add_details():
 
 func toggle_quality():
 	quality_high=not quality_high
-	viewport.msaa_3d=Viewport.MSAA_2X if quality_high else Viewport.MSAA_DISABLED
-	scene_light.shadow_enabled=quality_high
+	viewport.msaa_3d=Viewport.MSAA_2X if quality_high and not OS.has_feature("web") else Viewport.MSAA_DISABLED
+	scene_light.shadow_enabled=quality_high and not OS.has_feature("web")
 	update_render_resolution()
 
 # A single textured floor surface replaces hundreds of individual tile meshes.
@@ -1175,6 +1175,10 @@ func update_render_resolution():
 	var scale_factor: float=1.0 if quality_high else 0.8
 	var target: Vector2=screen_size*scale_factor
 	var limit: float=1920.0 if quality_high else 1280.0
+	if OS.has_feature("web"):
+		limit=1280.0
+		# Quantize dimensions to avoid repeated framebuffer reallocations.
+		target=Vector2(roundf(target.x/16.0)*16.0,roundf(target.y/16.0)*16.0)
 	if maxf(target.x,target.y)>limit:
 		target*=limit/maxf(target.x,target.y)
 	var wanted=Vector2i(maxi(2,roundi(target.x)),maxi(2,roundi(target.y)))

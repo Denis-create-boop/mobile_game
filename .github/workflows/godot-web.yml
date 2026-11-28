@@ -17,7 +17,7 @@ concurrency:
   cancel-in-progress: true
 jobs:
   web:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v4
       - name: Cache Godot engine and export templates
@@ -51,7 +51,7 @@ jobs:
         run: echo "$HOME/.local/bin" >> "$GITHUB_PATH"
       - name: Cache downloaded models
         id: kenney-cache
-        uses: actions/cache@v4
+        uses: actions/cache/restore@v4
         with:
           path: assets/kenney
           key: kenney-${{ runner.os }}-${{ hashFiles('scripts/install_assets.py', 'downloads/**') }}
@@ -65,7 +65,7 @@ jobs:
           key: kenney-${{ runner.os }}-${{ hashFiles('scripts/install_assets.py', 'downloads/**') }}
       - name: Cache generated Blender modules
         id: premium-cache
-        uses: actions/cache@v4
+        uses: actions/cache/restore@v4
         with:
           path: assets/premium
           key: premium-glb-${{ runner.os }}-v1-${{ hashFiles('scripts/blender_store.py') }}
@@ -106,9 +106,14 @@ jobs:
           test -s "$release/index.html"
           test -s "$release/index.wasm"
           printf '<!doctype html><meta charset="utf-8"><meta http-equiv="refresh" content="0;url=release-%s/"><a href="release-%s/">Open Market Empire</a>' "${GITHUB_SHA:0:12}" "${GITHUB_SHA:0:12}" > build/web/index.html
+      - name: Cache Chromium
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/ms-playwright
+          key: chromium-ubuntu24-playwright-1.51.0-v1
       - name: Capture browser screenshots
         run: |
-          pip install playwright pillow
+          pip install playwright==1.51.0 pillow
           python -m playwright install --with-deps chromium
           python -m http.server 8765 --directory build/web > /tmp/server.log 2>&1 &
           python scripts/web_visual_check.py
@@ -122,7 +127,9 @@ jobs:
         if: always()
         with:
           name: browser-game-screenshot
-          path: /tmp/game.png
+          path: |
+            /tmp/game.png
+            /tmp/game-stability-*.png
           if-no-files-found: warn
       - uses: actions/upload-artifact@v4
         with:
@@ -155,7 +162,7 @@ jobs:
           path: build/web
   deploy:
     needs: web
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     environment:
       name: github-pages
       url: ${{ steps.deployment.outputs.page_url }}
