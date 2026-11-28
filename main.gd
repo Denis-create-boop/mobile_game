@@ -207,7 +207,7 @@ func build_ui():
 	label(side, "ПОСТАВКИ · ПОЛКА / СКЛАД", 15)
 	supplier_button=button(side,"",switch_supplier)
 	info = label(side, "", 13)
-	button(side, "Разгрузить / пополнить вручную", manual_load)
+	button(side, "Статус разгрузки", manual_load)
 	filter_button=button(side,"",toggle_catalog)
 	for i in range(GOODS.size()):
 		shop_rows.append(button(side, "", buy.bind(i)))
@@ -439,22 +439,13 @@ func hire_role(i: int):
 	save_game()
 
 func manual_load():
-	for task in loader_tasks:
-		if task["phase"]!=0:
-			message="Грузчики работают. Дождитесь окончания разгрузки."
-			refresh()
-			return
-	for i in range(GOODS.size()):
-		if delivery[i]>0:
-			storage[i] += delivery[i]
-			delivery[i] = 0
-	for i in range(GOODS.size()):
-		var amount = mini(storage[i],capacity(i)-stock[i])
-		stock[i] += amount
-		storage[i] -= amount
-	message = "Товар разгружен, полки пополнены."
+	if loaders==0:
+		message="Для разгрузки и пополнения полок наймите грузчика."
+	elif sum_items(delivery)>0 or sum_items(storage)>0:
+		message="Грузчики доставляют товар на тележках. Перемещение выполняется автоматически."
+	else:
+		message="Нет товаров для перемещения."
 	refresh()
-	save_game()
 
 func manual_clean():
 	dirt = 0
@@ -677,7 +668,7 @@ func update_cleaner_task(task: Dictionary, delta: float):
 		task["target"]=Vector3(rng.randf_range(-3.4,3.5),0,rng.randf_range(-0.8,1.0))
 
 func update_loader_task(task: Dictionary, delta: float):
-	var dock=Vector3(-3.9,0,-0.25)
+	var dock=Vector3(-5.35,0,-2.25)
 	var warehouse=Vector3(-3.9,0,1.35)
 	var item: int=task["item"]
 	match int(task["phase"]):
@@ -699,7 +690,7 @@ func update_loader_task(task: Dictionary, delta: float):
 				task["amount"]=amount
 				task["phase"]=2 if amount>0 else 0
 		2:
-			if move_actor(task,warehouse,delta,2.4):
+			if move_actor(task,warehouse,delta,1.65):
 				storage[item]+=task["amount"]
 				task["amount"]=0
 				task["phase"]=0
@@ -713,7 +704,7 @@ func update_loader_task(task: Dictionary, delta: float):
 				task["target"]=shelf_pos(item)+Vector3(0.35,0,0.25)
 				task["phase"]=4 if amount>0 else 0
 		4:
-			if move_staff(task,task["target"],delta,2.4):
+			if move_staff(task,task["target"],delta,1.65):
 				var n=mini(task["amount"],capacity(item)-stock[item])
 				stock[item]+=n
 				storage[item]+=task["amount"]-n
@@ -892,7 +883,7 @@ func show_menu():
 		if child is Button:
 			child.custom_minimum_size.y=52
 			child.add_theme_font_size_override("font_size",20)
-	var version_label=label(column,"V34",14)
+	var version_label=label(column,"V35",14)
 	version_label.horizontal_alignment=HORIZONTAL_ALIGNMENT_CENTER
 
 func toggle_sound():

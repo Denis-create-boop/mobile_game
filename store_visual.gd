@@ -37,6 +37,7 @@ var resize_clock: float = 0.0
 var crates: Array = []
 var dirt_marks: Array = []
 var delivery_boxes: Array = []
+var loader_carts: Array[Node3D]=[]
 var tick: float = 0.0
 var build_pads: Array = []
 var annex: Node3D
@@ -405,7 +406,7 @@ func build_store():
 	box(stage,Vector3(-4.4,0.04,-0.4),Vector3(0.95,0.08,1.0),Color("#e7bb69"))
 	sign_text(stage,Vector3(-4.4,0.65,-0.2),"ПОСТАВКА",Color("#243841"),0.004)
 	for i in range(3):
-		delivery_boxes.append(box(stage,Vector3(-4.4,0.25+i*0.38,-0.45),Vector3(0.65,0.36,0.6),wood))
+		delivery_boxes.append(box(stage,Vector3(-5.35,0.25+i*0.38,-2.25),Vector3(0.65,0.36,0.6),wood))
 	for i in range(6):
 		dirt_marks.append(ball(stage,Vector3(-3+i*0.95,0.012,0.3+sin(i)*0.7),Vector3(0.45,0.02,0.3),Color("#98876c")))
 	for pos in [Vector3(-4.25,0,3),Vector3(4.3,0,-3.15)]:
@@ -424,6 +425,7 @@ func build_store():
 		add_carry(model)
 		model.visible=false
 		loader_models.append(model)
+		loader_carts.append(make_loader_cart(model))
 		var janitor=person(Color("#718fc1"))
 		var broom=box(janitor,Vector3(0.34,0.45,0.16),Vector3(0.055,0.95,0.055),wood)
 		broom.rotation.z=-0.3
@@ -561,14 +563,15 @@ func install_rack(slot: int, kind: int):
 func person(color: Color) -> Node3D:
 	var p = Node3D.new()
 	stage.add_child(p)
-	p.scale=Vector3(1.18,1.18,1.18)
+	var stature: float=[1.07,1.13,1.19,1.23][character_serial%4]
+	p.scale=Vector3(stature,stature,stature)
 	var names: Array=[]
 	var entries: Dictionary=asset_library.catalog.get("people",{})
 	for key in entries:
 		if not String(key).contains("wheelchair") and not String(key).contains("skeleton") and not String(key).contains("animation"):
 			names.append(key)
 	if not names.is_empty():
-		var model=asset_library.spawn("people",[names[character_serial%names.size()]],p,Vector3.ZERO,Vector3(0.70,1.46,0.66))
+		var model=asset_library.spawn("people",[names[character_serial%names.size()]],p,Vector3.ZERO,Vector3(0.59,1.58,0.56))
 		character_serial+=1
 		if model!=null:
 			p.set_meta("model",model)
@@ -605,6 +608,27 @@ func person(color: Color) -> Node3D:
 	for direction in [-1,1]:
 		ball(p,Vector3(direction*0.07,1.21,0.16),Vector3(0.035,0.045,0.025),Color("#3f3530"))
 	return p
+
+func make_loader_cart(parent: Node3D) -> Node3D:
+	var cart=Node3D.new()
+	parent.add_child(cart)
+	cart.position=Vector3(0,0,0.75)
+	var metal=Color("#52626b")
+	box(cart,Vector3(0,0.22,0),Vector3(0.63,0.10,0.82),metal)
+	for x in [-0.27,0.27]:
+		for z in [-0.29,0.29]:
+			var wheel=cylinder(cart,Vector3(x,0.10,z),0.10,0.07,Color("#272d33"))
+			wheel.rotation.z=PI/2
+		box(cart,Vector3(x,0.53,-0.34),Vector3(0.045,0.64,0.045),metal)
+	box(cart,Vector3(0,0.85,-0.34),Vector3(0.60,0.06,0.06),metal)
+	var cargo=Node3D.new()
+	cart.add_child(cargo)
+	box(cargo,Vector3(-0.13,0.43,0),Vector3(0.29,0.32,0.58),Color("#b98752"))
+	box(cargo,Vector3(0.16,0.43,0),Vector3(0.26,0.32,0.58),Color("#c69a67"))
+	box(cargo,Vector3(0,0.68,0),Vector3(0.42,0.20,0.42),Color("#d6b17a"))
+	cargo.hide()
+	cart.set_meta("cargo",cargo)
+	return cart
 
 func add_carry(p: Node3D):
 	var b=box(p,Vector3(0,0.72,0.3),Vector3(0.32,0.28,0.28),Color("#c99458"))
@@ -727,7 +751,8 @@ func _process(delta):
 		cleaner_models[i].visible=i<game.cleaner_tasks.size()
 		if i<game.loader_tasks.size():
 			var task=game.loader_tasks[i]
-			actor(loader_models[i],task["pos"],task["amount"]>0,delta)
+			actor(loader_models[i],task["pos"],false,delta)
+			loader_carts[i].get_meta("cargo").visible=task["amount"]>0
 		if i<game.cleaner_tasks.size():
 			var task=game.cleaner_tasks[i]
 			actor(cleaner_models[i],task["pos"],false,delta)
@@ -760,7 +785,7 @@ func _process(delta):
 		actor(people[i],c["pos"],c["carry"],delta)
 		var tag: Label3D=people[i].get_meta("order")
 		tag.text=game.GOODS[c["item"]] if c["phase"]<4 and not c["carry"] else ("Оплата" if c["carry"] and c["phase"]<4 else "")
-	status_label.text=("МАГАЗИН ОТКРЫТ" if game.running else "МАГАЗИН ЗАКРЫТ")+" | V34 • 3D: %d / резерв: %d" % [asset_library.loaded_count,asset_library.fallback_count]
+	status_label.text=("МАГАЗИН ОТКРЫТ" if game.running else "МАГАЗИН ЗАКРЫТ")+" | V35 • 3D: %d / резерв: %d" % [asset_library.loaded_count,asset_library.fallback_count]
 	sales_label.position=Vector2(12,size.y-26)
 	sales_label.text="Выручка: %d мон. | Клиентов: %d" % [game.revenue,game.customers.size()]
 
@@ -1058,7 +1083,10 @@ func update_infrastructure(delta: float):
 		var j: int=i%3
 		var on: bool=(signal_phase==0 and j==2) or (signal_phase==1 and j==1) or (signal_phase>=2 and j==0)
 		var material: StandardMaterial3D=signal_lamps[i].material_override
-		material.albedo_color=colors[j] if on else colors[j].darkened(0.8)
+		var desired: Color=colors[j] if on else colors[j].darkened(0.8)
+		if material.albedo_color==desired and material.emission_enabled==on:
+			continue
+		material.albedo_color=desired
 		material.emission_enabled=on
 		material.emission=colors[j]
 	while street_people.size()<game.street_queue.size():
@@ -1183,9 +1211,11 @@ func update_render_resolution():
 	var scale_factor: float=1.0 if quality_high else 0.8
 	var target: Vector2=screen_size*scale_factor
 	var limit: float=1920.0 if quality_high else 1280.0
+	if OS.has_feature("web"):
+		limit=1280.0 if quality_high else 960.0
 	if maxf(target.x,target.y)>limit:
 		target*=limit/maxf(target.x,target.y)
-	var wanted=Vector2i(maxi(2,roundi(target.x)),maxi(2,roundi(target.y)))
+	var wanted=Vector2i(maxi(16,roundi(target.x/16.0)*16),maxi(16,roundi(target.y/16.0)*16))
 	if wanted!=pending_render_size:
 		pending_render_size=wanted
 		render_resize_stable=0
@@ -1421,7 +1451,10 @@ func city_phase(j: Dictionary) -> int:
 
 func city_lamp(lamp: MeshInstance3D, color: Color, enabled: bool):
 	var material: StandardMaterial3D=lamp.material_override
-	material.albedo_color=color if enabled else color.darkened(0.82)
+	var desired: Color=color if enabled else color.darkened(0.82)
+	if material.albedo_color==desired and material.emission_enabled==enabled:
+		return
+	material.albedo_color=desired
 	material.emission_enabled=enabled
 	material.emission=color
 	material.emission_energy_multiplier=1.3
