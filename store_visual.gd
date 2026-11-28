@@ -80,7 +80,7 @@ func _ready():
 	viewport = SubViewport.new()
 	viewport.size = Vector2i(960,640)
 	viewport.own_world_3d = true
-	viewport.msaa_3d = Viewport.MSAA_DISABLED if OS.has_feature("web") else Viewport.MSAA_2X
+	viewport.msaa_3d = Viewport.MSAA_2X
 	viewport.render_target_update_mode = SubViewport.UPDATE_ALWAYS
 	add_child(viewport)
 	render_surface=TextureRect.new()
@@ -107,7 +107,7 @@ func _ready():
 	light.light_energy = 0.64
 	light.light_color=Color("#fff8ef")
 	scene_light=light
-	light.shadow_enabled = not OS.has_feature("web")
+	light.shadow_enabled = true
 	light.directional_shadow_max_distance=30.0
 	light.shadow_bias=0.10
 	light.shadow_normal_bias=1.0
@@ -275,8 +275,8 @@ func ball(parent: Node3D, pos: Vector3, dims: Vector3, color: Color) -> MeshInst
 		var b=SphereMesh.new()
 		b.radius=0.5
 		b.height=1.0
-		b.radial_segments=12 if OS.has_feature("web") else 20
-		b.rings=6 if OS.has_feature("web") else 10
+		b.radial_segments=20
+		b.rings=10
 		mesh_cache["sphere"]=b
 	var n=mesh(parent,mesh_cache["sphere"],pos,color)
 	n.scale = dims
@@ -555,60 +555,55 @@ func install_rack(slot: int, kind: int):
 	built_items[slot]=items
 
 func person(color: Color) -> Node3D:
-	var p=Node3D.new()
+	var p = Node3D.new()
 	stage.add_child(p)
-	var serial: int=character_serial
-	character_serial+=1
-	var stature: float=[0.96,1.02,1.09,1.0][serial%4]
-	p.scale=Vector3(stature,stature,stature)
-	var skin: Color=[Color("#e8bc99"),Color("#bc8968"),Color("#8e6046"),Color("#d6a582")][serial%4]
-	var hair: Color=[Color("#3c2b24"),Color("#272427"),Color("#806044"),Color("#b49b79")][serial%4]
-	var pants: Color=[Color("#303e49"),Color("#545653"),Color("#38444d")][serial%3]
-	var shoe=Color("#292d31")
+	p.scale=Vector3(1.18,1.18,1.18)
+	var names: Array=[]
+	var entries: Dictionary=asset_library.catalog.get("people",{})
+	for key in entries:
+		if not String(key).contains("wheelchair") and not String(key).contains("skeleton") and not String(key).contains("animation"):
+			names.append(key)
+	if not names.is_empty():
+		var model=asset_library.spawn("people",[names[character_serial%names.size()]],p,Vector3.ZERO,Vector3(0.70,1.46,0.66))
+		character_serial+=1
+		if model!=null:
+			p.set_meta("model",model)
+			var animations=model.find_children("*","AnimationPlayer",true,false)
+			if not animations.is_empty():
+				p.set_meta("animation",animations[0])
+			return p
+	var skin = Color("#eac1a2")
+	var pants = Color("#364d60")
+	var left = Node3D.new()
+	var right = Node3D.new()
+	p.add_child(left)
+	p.add_child(right)
+	left.position = Vector3(-0.13,0.5,0)
+	right.position = Vector3(0.13,0.5,0)
+	for leg in [left,right]:
+		cylinder(leg,Vector3(0,-0.20,0),0.085,0.4,pants)
+		ball(leg,Vector3(0,-0.42,0.045),Vector3(0.2,0.15,0.31),Color("#293b40"))
+	p.set_meta("left",left)
+	p.set_meta("right",right)
+	ball(p,Vector3(0,0.72,0),Vector3(0.47,0.57,0.32),color)
+	box(p,Vector3(0,0.51,0),Vector3(0.35,0.065,0.28),Color("#263d43"))
+	box(p,Vector3(-0.10,0.82,0.16),Vector3(0.10,0.075,0.015),Color("#eee4d3"))
+	for direction in [-1,1]:
+		var arm = cylinder(p,Vector3(direction*0.27,0.70,0),0.07,0.38,color)
+		arm.rotation.z = direction*0.22
+		ball(p,Vector3(direction*0.30,0.48,0),Vector3(0.13,0.15,0.13),skin)
+	cylinder(p,Vector3(0,1.00,0),0.085,0.13,skin)
+	ball(p,Vector3(0,1.19,0),Vector3(0.36,0.40,0.35),skin)
+	ball(p,Vector3(0,1.30,-0.055),Vector3(0.38,0.26,0.34),Color("#574137"))
+	ball(p,Vector3(0,1.14,0.17),Vector3(0.055,0.07,0.055),skin.darkened(0.08))
 	for side in [-1,1]:
-		var leg=Node3D.new()
-		p.add_child(leg)
-		leg.position=Vector3(side*0.105,0.79,0)
-		var thigh=cylinder(leg,Vector3(0,-0.19,0),0.092,0.38,pants)
-		thigh.scale.z=0.93
-		var shin=Node3D.new()
-		leg.add_child(shin)
-		shin.position=Vector3(0,-0.38,0)
-		cylinder(shin,Vector3(0,-0.17,0),0.071,0.34,pants)
-		ball(shin,Vector3(0,-0.33,0.06),Vector3(0.18,0.13,0.31),shoe)
-		p.set_meta("left" if side==-1 else "right",leg)
-		p.set_meta("left_knee" if side==-1 else "right_knee",shin)
-	ball(p,Vector3(0,0.81,0),Vector3(0.40,0.22,0.27),pants)
-	ball(p,Vector3(0,1.09,0),Vector3(0.43,0.55,0.29),color)
-	box(p,Vector3(0,0.88,0.13),Vector3(0.31,0.035,0.035),pants)
-	var seam=color.darkened(0.25)
-	box(p,Vector3(0,1.10,0.151),Vector3(0.012,0.38,0.012),seam)
-	for side in [-1,1]:
-		var arm=Node3D.new()
-		p.add_child(arm)
-		arm.position=Vector3(side*0.225,1.28,0)
-		arm.rotation.z=side*0.11
-		ball(arm,Vector3(0,-0.13,0),Vector3(0.15,0.31,0.16),color)
-		cylinder(arm,Vector3(0,-0.34,0.015),0.057,0.22,color.darkened(0.05))
-		ball(arm,Vector3(0,-0.49,0.025),Vector3(0.12,0.16,0.115),skin)
-		p.set_meta("left_arm" if side==-1 else "right_arm",arm)
-		var collar=box(p,Vector3(side*0.075,1.34,0.11),Vector3(0.12,0.08,0.025),color.lightened(0.24))
-		collar.rotation.z=side*0.35
-	cylinder(p,Vector3(0,1.39,0),0.074,0.14,skin)
-	ball(p,Vector3(0,1.53,0.012),Vector3(0.245,0.30,0.245),skin)
-	ball(p,Vector3(0,1.62,-0.018),Vector3(0.26,0.17,0.25),hair)
-	if serial%3==1:
-		ball(p,Vector3(0,1.47,-0.095),Vector3(0.25,0.32,0.11),hair)
-	for side in [-1,1]:
-		ball(p,Vector3(side*0.119,1.53,0),Vector3(0.045,0.068,0.045),skin)
-		ball(p,Vector3(side*0.044,1.55,0.122),Vector3(0.027,0.015,0.014),Color("#35302d"))
-	ball(p,Vector3(0,1.51,0.131),Vector3(0.035,0.049,0.043),skin)
-	if serial%4==0:
-		box(p,Vector3(-0.11,1.18,0.15),Vector3(0.095,0.052,0.016),Color("#eee5d5"))
+		ball(p,Vector3(side*0.18,1.18,0),Vector3(0.07,0.11,0.08),skin)
+	for direction in [-1,1]:
+		ball(p,Vector3(direction*0.07,1.21,0.16),Vector3(0.035,0.045,0.025),Color("#3f3530"))
 	return p
 
 func add_carry(p: Node3D):
-	var b=box(p,Vector3(0,0.93,0.33),Vector3(0.32,0.28,0.28),Color("#c99458"))
+	var b=box(p,Vector3(0,0.72,0.3),Vector3(0.32,0.28,0.28),Color("#c99458"))
 	b.visible=false
 	p.set_meta("carry",b)
 
@@ -618,14 +613,8 @@ func actor(p: Node3D, target: Vector3, carrying: bool, dt: float):
 	if walking:
 		p.rotation.y=atan2(direction.x,direction.z)
 	if p.has_meta("left"):
-		var stride: float=sin(tick*10.0)*0.40 if walking else 0.0
-		p.get_meta("left").rotation.x=stride
-		p.get_meta("right").rotation.x=-stride
-		if p.has_meta("left_knee"):
-			p.get_meta("left_knee").rotation.x=maxf(0.0,-stride)*0.65
-			p.get_meta("right_knee").rotation.x=maxf(0.0,stride)*0.65
-			p.get_meta("left_arm").rotation.x=-stride*0.75 if not carrying else -0.85
-			p.get_meta("right_arm").rotation.x=stride*0.75 if not carrying else -0.85
+		p.get_meta("left").rotation.x=sin(tick*12)*0.5 if walking else 0
+		p.get_meta("right").rotation.x=-sin(tick*12)*0.5 if walking else 0
 	elif p.has_meta("animation"):
 		var player: AnimationPlayer=p.get_meta("animation")
 		var wanted="walk" if walking else "idle"
@@ -799,8 +788,8 @@ func add_details():
 
 func toggle_quality():
 	quality_high=not quality_high
-	viewport.msaa_3d=Viewport.MSAA_2X if quality_high and not OS.has_feature("web") else Viewport.MSAA_DISABLED
-	scene_light.shadow_enabled=quality_high and not OS.has_feature("web")
+	viewport.msaa_3d=Viewport.MSAA_2X if quality_high else Viewport.MSAA_DISABLED
+	scene_light.shadow_enabled=quality_high
 	update_render_resolution()
 
 # A single textured floor surface replaces hundreds of individual tile meshes.
@@ -1175,10 +1164,6 @@ func update_render_resolution():
 	var scale_factor: float=1.0 if quality_high else 0.8
 	var target: Vector2=screen_size*scale_factor
 	var limit: float=1920.0 if quality_high else 1280.0
-	if OS.has_feature("web"):
-		limit=1280.0
-		# Quantize dimensions to avoid repeated framebuffer reallocations.
-		target=Vector2(roundf(target.x/16.0)*16.0,roundf(target.y/16.0)*16.0)
 	if maxf(target.x,target.y)>limit:
 		target*=limit/maxf(target.x,target.y)
 	var wanted=Vector2i(maxi(2,roundi(target.x)),maxi(2,roundi(target.y)))
